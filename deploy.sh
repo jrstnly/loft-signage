@@ -23,7 +23,7 @@ BUILD_CMD="npm ci && npm run build" # change to "pnpm i --frozen-lockfile && pnp
 BUILD_OUTPUT_DIR="dist"             # Vite output directory (use "build" for CRA)
 NODE_VERSION="22"                   # Node LTS (22). We'll try NodeSource.
 
-# Chromium flags (tuned for ARM systems with fallbacks)
+# Browser flags (tuned for ARM systems with fallbacks)
 CHROMIUM_FLAGS=(
   "--kiosk" "${KIOSK_URL}"
   "--no-first-run"
@@ -41,6 +41,12 @@ CHROMIUM_FLAGS=(
   "--disable-dev-shm-usage"
   "--disable-web-security"
   "--disable-features=VizDisplayCompositor"
+  "--disable-gpu-sandbox"
+  "--disable-accelerated-2d-canvas"
+  "--disable-accelerated-jpeg-decoding"
+  "--disable-accelerated-mjpeg-decode"
+  "--disable-accelerated-video-decode"
+  "--disable-accelerated-video-encode"
 )
 
 # ==============================
@@ -166,6 +172,21 @@ else
   echo "Using browser: ${CHROMIUM_BIN}"
 fi
 
+# If Chromium has library issues, try Firefox as fallback
+if [ -n "${CHROMIUM_BIN}" ] && [[ "${CHROMIUM_BIN}" == *"chromium"* ]]; then
+  echo "Testing Chromium compatibility..."
+  if ! "${CHROMIUM_BIN}" --version >/dev/null 2>&1; then
+    echo "Chromium has compatibility issues, trying Firefox ESR..."
+    apt-get install -y firefox-esr || true
+    if command -v firefox-esr >/dev/null 2>&1; then
+      CHROMIUM_BIN="$(command -v firefox-esr)"
+      echo "Switched to Firefox ESR due to Chromium compatibility issues"
+    else
+      echo "WARNING: Both Chromium and Firefox have issues, proceeding with Chromium and fallback flags"
+    fi
+  fi
+fi
+
 # Test if the browser can actually run (check for library issues)
 echo "Testing browser compatibility..."
 if ! "${CHROMIUM_BIN}" --version >/dev/null 2>&1; then
@@ -188,6 +209,25 @@ if ! "${CHROMIUM_BIN}" --version >/dev/null 2>&1; then
     echo "Browser still has issues, will try with fallback flags"
   else
     echo "Browser compatibility fixed!"
+  fi
+fi
+
+# Check for GBM library compatibility issues
+echo "Checking GBM library compatibility..."
+if ldd "${CHROMIUM_BIN}" | grep -q "libgbm"; then
+  echo "GBM library detected, checking version compatibility..."
+  
+  # Try to install compatible GBM versions
+  apt-get install -y \
+    libgbm1 \
+    libgbm-dev \
+    libdrm2 \
+    libdrm-common || true
+  
+  # Create fallback symlinks for GBM if needed
+  if [ -f "/usr/lib/arm-linux-gnueabihf/libgbm.so.1" ]; then
+    echo "Creating GBM fallback symlinks..."
+    ln -sf /usr/lib/arm-linux-gnueabihf/libgbm.so.1 /usr/lib/libgbm.so.1 2>/dev/null || true
   fi
 fi
 
