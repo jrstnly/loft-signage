@@ -71,19 +71,23 @@ apt-get install -y \
   fonts-dejavu-core
 
 # Install Wayland compositor and display tools (with fallbacks)
+echo "Installing display and compositor tools..."
 if apt-cache search cage >/dev/null 2>&1; then
   apt-get install -y cage
+  echo "✓ cage installed (Wayland compositor)"
 else
-  echo "cage not available, will try alternatives..."
+  echo "⚠ cage not available on this distribution, will use X11 fallback"
 fi
 
 # Try different display tools
 if apt-cache search wlr-randr >/dev/null 2>&1; then
   apt-get install -y wlr-randr
+  echo "✓ wlr-randr installed (display configuration)"
 elif apt-cache search wlroots-utils >/dev/null 2>&1; then
   apt-get install -y wlroots-utils
+  echo "✓ wlroots-utils installed (display configuration)"
 else
-  echo "wlr-randr/wlroots-utils not available, display setup may be limited..."
+  echo "⚠ wlr-randr/wlroots-utils not available, display setup will be limited"
 fi
 
 # Browser (package name differs by distro)
@@ -102,8 +106,11 @@ echo "Using browser: ${CHROMIUM_BIN}"
 # 3) Node.js (NodeSource LTS - always install latest)
 # ==============================
 echo "Installing Node.js ${NODE_VERSION} via NodeSource…"
+# Remove old NodeSource repositories first
+rm -f /etc/apt/sources.list.d/nodesource.list* 2>/dev/null || true
 # NodeSource script handles ARM and Debian/Ubuntu variants nicely
 curl -fsSL https://deb.nodesource.com/setup_${NODE_VERSION}.x | bash -
+apt-get update
 apt-get install -y nodejs
 echo "Node: $(node -v 2>/dev/null || echo 'missing')  NPM: $(npm -v 2>/dev/null || echo 'missing')"
 
