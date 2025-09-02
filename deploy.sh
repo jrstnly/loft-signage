@@ -114,10 +114,18 @@ usermod -aG video,input,render "${KIOSK_USER}" || true
 echo "Setting up repository at ${REPO_BASE}…"
 mkdir -p "${REPO_BASE}"
 
+# Debug: show what's in the current directory
+echo "Current directory contents:"
+ls -la . | head -10
+echo "Target directory contents:"
+ls -la "${REPO_BASE}" | head -10
+
 # Check if we're running from within the repo (for local testing)
 if [ -f ".git/config" ] && [ -f "package.json" ]; then
   echo "Running from local repository, copying files…"
   # We're running from the repo directory, copy everything
+  # Clear the target directory first to avoid conflicts
+  rm -rf "${REPO_BASE:?}/"*
   cp -a . "${REPO_BASE}/"
   # Remove .git to avoid conflicts
   rm -rf "${REPO_BASE}/.git"
@@ -135,7 +143,11 @@ else
         curl -fsSL -o /tmp/loft-signage.zip "${ZIP_URL}"
         apt-get install -y unzip
         unzip -q /tmp/loft-signage.zip -d /tmp/
-        mv /tmp/loft-signage-main/* "${REPO_BASE}/"
+        
+        # Clear the target directory first, then copy files
+        rm -rf "${REPO_BASE:?}/"*
+        cp -a /tmp/loft-signage-main/* "${REPO_BASE}/"
+        
         rm -rf /tmp/loft-signage-main /tmp/loft-signage.zip
       else
         echo "ERROR: Neither git nor curl available. Cannot download repository." >&2
