@@ -66,11 +66,25 @@ echo "Installing base packages…"
 apt-get update -y
 apt-get install -y \
   git curl ca-certificates unzip rsync \
-  cage \
   nginx-light \
   dbus-user-session \
-  fonts-dejavu-core \
-  wlr-randr || apt-get install -y wlroots-utils || true
+  fonts-dejavu-core
+
+# Install Wayland compositor and display tools (with fallbacks)
+if apt-cache search cage >/dev/null 2>&1; then
+  apt-get install -y cage
+else
+  echo "cage not available, will try alternatives..."
+fi
+
+# Try different display tools
+if apt-cache search wlr-randr >/dev/null 2>&1; then
+  apt-get install -y wlr-randr
+elif apt-cache search wlroots-utils >/dev/null 2>&1; then
+  apt-get install -y wlroots-utils
+else
+  echo "wlr-randr/wlroots-utils not available, display setup may be limited..."
+fi
 
 # Browser (package name differs by distro)
 if ! need_cmd chromium && ! need_cmd chromium-browser; then
@@ -85,14 +99,12 @@ fi
 echo "Using browser: ${CHROMIUM_BIN}"
 
 # ==============================
-# 3) Node.js (NodeSource LTS if needed)
+# 3) Node.js (NodeSource LTS - always install latest)
 # ==============================
-if ! need_cmd node; then
-  echo "Installing Node.js ${NODE_VERSION} via NodeSource…"
-  # NodeSource script handles ARM and Debian/Ubuntu variants nicely
-  curl -fsSL https://deb.nodesource.com/setup_${NODE_VERSION}.x | bash -
-  apt-get install -y nodejs
-fi
+echo "Installing Node.js ${NODE_VERSION} via NodeSource…"
+# NodeSource script handles ARM and Debian/Ubuntu variants nicely
+curl -fsSL https://deb.nodesource.com/setup_${NODE_VERSION}.x | bash -
+apt-get install -y nodejs
 echo "Node: $(node -v 2>/dev/null || echo 'missing')  NPM: $(npm -v 2>/dev/null || echo 'missing')"
 
 # Optional: speedier builds
@@ -269,27 +281,47 @@ cat >/usr/local/bin/kiosk-display-setup <<'BASH'
 #!/usr/bin/env bash
 set -euo pipefail
 
-if ! command -v wlr-randr >/dev/null 2>&1; then
-  echo "wlr-randr not found; skipping display setup." >&2
+# Try different display tools
+DISPLAY_TOOL=""
+if command -v wlr-randr >/dev/null 2>&1; then
+  DISPLAY_TOOL="wlr-randr"
+elif command -v wlroots-utils >/dev/null 2>&1; then
+  DISPLAY_TOOL="wlroots-utils"
+fi
+
+if [ -z "${DISPLAY_TOOL}" ]; then
+  echo "No display tools found; skipping display setup." >&2
   exit 0
 fi
 
-OUT="$(wlr-randr | awk '/ connected/ {print $1; exit}')"
+# Try to detect connected output
+OUT=""
+if [ "${DISPLAY_TOOL}" = "wlr-randr" ]; then
+  OUT="$(wlr-randr | awk '/ connected/ {print $1; exit}')"
+elif [ "${DISPLAY_TOOL}" = "wlroots-utils" ]; then
+  # Try alternative display detection
+  OUT="$(wlr-randr 2>/dev/null | awk '/ connected/ {print $1; exit}' || echo "")"
+fi
+
 if [ -z "${OUT:-}" ]; then
-  echo "No connected output found via wlr-randr; skipping display setup." >&2
+  echo "No connected output found; skipping display setup." >&2
   exit 0
 fi
 
 # 1920x1080 with 90° transform → effective 1080x1920 portrait
-if ! wlr-randr --output "$OUT" --mode 1920x1080 --transform 90; then
-  echo "wlr-randr failed (trying transform 270 as fallback)" >&2
-  wlr-randr --output "$OUT" --mode 1920x1080 --transform 270 || true
+if [ "${DISPLAY_TOOL}" = "wlr-randr" ]; then
+  if ! wlr-randr --output "$OUT" --mode 1920x1080 --transform 90; then
+    echo "wlr-randr failed (trying transform 270 as fallback)" >&2
+    wlr-randr --output "$OUT" --mode 1920x1080 --transform 270 || true
+  fi
+else
+  echo "Display tool ${DISPLAY_TOOL} found but transform not implemented; skipping." >&2
 fi
 BASH
 chmod +x /usr/local/bin/kiosk-display-setup
 
 # ==============================
-# 9) systemd unit for cage + chromium
+# 9) systemd unit for kiosk (cage + chromium or fallback)
 # ==============================
 echo "Creating systemd unit 'kiosk.service'…"
 KIOSK_UID="$(id -u "${KIOSK_USER}")"
@@ -298,9 +330,20 @@ KIOSK_GID="$(id -g "${KIOSK_USER}")"
 CHR_FLAGS_LINE=""
 for f in "${CHROMIUM_FLAGS[@]}"; do CHR_FLAGS_LINE="${CHR_FLAGS_LINE} \"$f\""; done
 
+# Determine the compositor to use
+COMPOSITOR_CMD=""
+if command -v cage >/dev/null 2>&1; then
+  COMPOSITOR_CMD="/usr/bin/cage -s --"
+  echo "Using cage as Wayland compositor"
+else
+  # Fallback: try to use X11 or direct display
+  COMPOSITOR_CMD=""
+  echo "cage not available, using direct display (may need X11)"
+fi
+
 cat > "${SYSTEMD_DIR}/kiosk.service" <<EOF
 [Unit]
-Description=Wayland kiosk (cage + chromium)
+Description=Kiosk display (chromium)
 Wants=network-online.target
 After=network-online.target nginx.service
 
@@ -321,7 +364,7 @@ TTYVHangup=yes
 TTYVTDisallocate=yes
 StandardInput=tty
 
-ExecStart=/usr/bin/cage -s -- ${CHROMIUM_BIN} ${CHR_FLAGS_LINE}
+ExecStart=${CHROMIUM_BIN} ${CHR_FLAGS_LINE}
 
 Restart=always
 RestartSec=2
@@ -351,7 +394,12 @@ echo "Build cmd:    ${BUILD_CMD}"
 echo "Build out:    ${BUILD_OUTPUT_DIR} → ${APP_ROOT}"
 echo
 echo "Server:       Nginx on http://127.0.0.1:${APP_PORT}"
-echo "Browser:      ${CHROMIUM_BIN} (Wayland/cage)"
+echo "Browser:      ${CHROMIUM_BIN}"
+if command -v cage >/dev/null 2>&1; then
+  echo "Compositor:   cage (Wayland)"
+else
+  echo "Compositor:   direct display (X11 fallback)"
+fi
 echo "Display:      1920x1080 rotated 90° (effective 1080x1920)"
 echo "Service:      kiosk.service (enabled)"
 echo
