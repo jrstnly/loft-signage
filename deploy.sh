@@ -69,7 +69,7 @@ apt-get install -y \
   nginx-light \
   dbus-user-session \
   fonts-dejavu-core \
-  x11-utils xrandr xauth
+  x11-xserver-utils xauth
 
 # Install Wayland compositor and display tools (with fallbacks)
 echo "Installing display and compositor tools..."
@@ -319,9 +319,22 @@ if [ -z "${DISPLAY_TOOL}" ]; then
     sleep 3
   fi
   
-  # Try xrandr for display rotation
-  if command -v xrandr >/dev/null 2>&1; then
-    DISPLAY_TOOL="xrandr"
+  # Try xrandr for display rotation (check multiple possible locations)
+  for xrandr_path in /usr/bin/xrandr /usr/bin/X11/xrandr; do
+    if [ -x "${xrandr_path}" ]; then
+      DISPLAY_TOOL="xrandr"
+      export PATH="${PATH}:/usr/bin/X11"
+      break
+    fi
+  done
+  
+  # If still no xrandr, try to install it
+  if [ -z "${DISPLAY_TOOL}" ] && command -v apt-get >/dev/null 2>&1; then
+    echo "Attempting to install xrandr..." >&2
+    apt-get install -y x11-xserver-utils || true
+    if command -v xrandr >/dev/null 2>&1; then
+      DISPLAY_TOOL="xrandr"
+    fi
   fi
 fi
 
