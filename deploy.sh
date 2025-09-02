@@ -68,7 +68,8 @@ apt-get install -y \
   git curl ca-certificates unzip rsync \
   nginx-light \
   dbus-user-session \
-  fonts-dejavu-core
+  fonts-dejavu-core \
+  x11-utils xrandr xauth
 
 # Install Wayland compositor and display tools (with fallbacks)
 echo "Installing display and compositor tools..."
@@ -290,42 +291,65 @@ cat >/usr/local/bin/kiosk-display-setup <<'BASH'
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Set up environment for the kiosk user
+export XDG_RUNTIME_DIR="/run/user/$(id -u kiosk)"
+export DISPLAY=":0"
+
+# Create runtime directory if it doesn't exist
+mkdir -p "${XDG_RUNTIME_DIR}"
+chown kiosk:kiosk "${XDG_RUNTIME_DIR}"
+
 # Try different display tools
 DISPLAY_TOOL=""
 if command -v wlr-randr >/dev/null 2>&1; then
   DISPLAY_TOOL="wlr-randr"
 elif command -v wlroots-utils >/dev/null 2>&1; then
   DISPLAY_TOOL="wlroots-utils"
+elif command -v xrandr >/dev/null 2>&1; then
+  DISPLAY_TOOL="xrandr"
 fi
 
 if [ -z "${DISPLAY_TOOL}" ]; then
-  echo "No display tools found; skipping display setup." >&2
+  echo "No display tools found; trying basic X11 setup..." >&2
+  
+  # Try to start X11 server if not running
+  if ! pgrep X >/dev/null 2>&1; then
+    echo "Starting X11 server..." >&2
+    startx -- -nocursor -s 0 -dpms 0 -s off -x 0 &
+    sleep 3
+  fi
+  
+  # Try xrandr for display rotation
+  if command -v xrandr >/dev/null 2>&1; then
+    DISPLAY_TOOL="xrandr"
+  fi
+fi
+
+if [ -z "${DISPLAY_TOOL}" ]; then
+  echo "No display tools available; skipping display setup." >&2
   exit 0
 fi
 
-# Try to detect connected output
-OUT=""
+# Try to detect connected output and set portrait mode
 if [ "${DISPLAY_TOOL}" = "wlr-randr" ]; then
   OUT="$(wlr-randr | awk '/ connected/ {print $1; exit}')"
-elif [ "${DISPLAY_TOOL}" = "wlroots-utils" ]; then
-  # Try alternative display detection
-  OUT="$(wlr-randr 2>/dev/null | awk '/ connected/ {print $1; exit}' || echo "")"
-fi
-
-if [ -z "${OUT:-}" ]; then
-  echo "No connected output found; skipping display setup." >&2
-  exit 0
-fi
-
-# 1920x1080 with 90° transform → effective 1080x1920 portrait
-if [ "${DISPLAY_TOOL}" = "wlr-randr" ]; then
-  if ! wlr-randr --output "$OUT" --mode 1920x1080 --transform 90; then
-    echo "wlr-randr failed (trying transform 270 as fallback)" >&2
+  if [ -n "${OUT}" ]; then
+    echo "Setting portrait mode with wlr-randr..." >&2
+    wlr-randr --output "$OUT" --mode 1920x1080 --transform 90 || \
     wlr-randr --output "$OUT" --mode 1920x1080 --transform 270 || true
+  fi
+elif [ "${DISPLAY_TOOL}" = "xrandr" ]; then
+  OUT="$(xrandr 2>/dev/null | awk '/ connected/ {print $1; exit}')"
+  if [ -n "${OUT}" ]; then
+    echo "Setting portrait mode with xrandr..." >&2
+    xrandr --output "$OUT" --rotate right || \
+    xrandr --output "$OUT" --rotate left || true
   fi
 else
   echo "Display tool ${DISPLAY_TOOL} found but transform not implemented; skipping." >&2
 fi
+
+echo "Display setup completed." >&2
 BASH
 chmod +x /usr/local/bin/kiosk-display-setup
 
@@ -361,11 +385,16 @@ User=${KIOSK_USER}
 Group=${KIOSK_USER}
 
 Environment=XDG_RUNTIME_DIR=/run/user/${KIOSK_UID}
+Environment=DISPLAY=:0
+Environment=XAUTHORITY=/home/${KIOSK_USER}/.Xauthority
+
+# Create runtime directory and set permissions
 ExecStartPre=/bin/mkdir -p /run/user/${KIOSK_UID}
 ExecStartPre=/bin/chown ${KIOSK_UID}:${KIOSK_GID} /run/user/${KIOSK_UID}
+ExecStartPre=/bin/chmod 700 /run/user/${KIOSK_UID}
 
-# Force portrait before launch
-ExecStartPre=/usr/local/bin/kiosk-display-setup
+# Force portrait before launch (with proper environment)
+ExecStartPre=/bin/bash -c 'XDG_RUNTIME_DIR=/run/user/${KIOSK_UID} DISPLAY=:0 /usr/local/bin/kiosk-display-setup'
 
 TTYPath=/dev/tty7
 TTYReset=yes
@@ -373,10 +402,11 @@ TTYVHangup=yes
 TTYVTDisallocate=yes
 StandardInput=tty
 
-ExecStart=${CHROMIUM_BIN} ${CHR_FLAGS_LINE}
+# Start chromium with proper environment
+ExecStart=/bin/bash -c 'XDG_RUNTIME_DIR=/run/user/${KIOSK_UID} DISPLAY=:0 ${CHROMIUM_BIN} ${CHR_FLAGS_LINE}'
 
 Restart=always
-RestartSec=2
+RestartSec=5
 NoNewPrivileges=yes
 
 [Install]
