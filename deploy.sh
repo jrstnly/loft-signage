@@ -103,24 +103,50 @@ if ! need_cmd chromium && ! need_cmd chromium-browser; then
   apt-get install -y chromium-browser || true
 fi
 
-# Install Mali GPU libraries for ARM systems
-echo "Installing Mali GPU libraries for ARM compatibility..."
+# Install OpenGL/Mesa libraries for ARM systems
+echo "Installing OpenGL/Mesa libraries for ARM compatibility..."
 apt-get install -y \
-  libmali-rk-dev \
-  libmali-rk \
   mesa-utils \
   mesa-utils-extra \
   libegl1-mesa \
   libgles2-mesa \
   libgl1-mesa-glx \
-  libgl1-mesa-dri || true
+  libgl1-mesa-dri \
+  libgl1 \
+  libglx-mesa0 || true
 
-# Create symlinks for Mali libraries if they don't exist
-if [ ! -f "/usr/lib/arm-linux-gnueabihf/libmali.so.1" ]; then
-  echo "Creating Mali library symlinks..."
-  # Find Mali libraries and create symlinks
-  find /usr/lib -name "libmali.so*" -exec ln -sf {} /usr/lib/arm-linux-gnueabihf/libmali.so.1 \; 2>/dev/null || true
-  find /usr/lib -name "libmali.so*" -exec ln -sf {} /usr/lib/libmali.so.1 \; 2>/dev/null || true
+# Try to find and install Mali libraries from available sources
+echo "Searching for Mali GPU libraries..."
+if apt-cache search libmali >/dev/null 2>&1; then
+  echo "Found Mali packages, installing..."
+  apt-get install -y $(apt-cache search libmali | grep -E "^libmali" | awk '{print $1}' | head -3) || true
+else
+  echo "No Mali packages found in repositories, will use Mesa fallback"
+fi
+
+# Create symlinks for Mali libraries if they exist anywhere
+echo "Setting up Mali library symlinks..."
+find /usr/lib -name "libmali.so*" 2>/dev/null | while read -r lib; do
+  echo "Found Mali library: $lib"
+  # Create symlinks in common locations
+  ln -sf "$lib" /usr/lib/libmali.so.1 2>/dev/null || true
+  ln -sf "$lib" /usr/lib/arm-linux-gnueabihf/libmali.so.1 2>/dev/null || true
+done
+
+# If no Mali libraries found, try to create a dummy symlink to Mesa
+if [ ! -f "/usr/lib/libmali.so.1" ] && [ ! -f "/usr/lib/arm-linux-gnueabihf/libmali.so.1" ]; then
+  echo "No Mali libraries found, creating Mesa fallback symlinks..."
+  # Find Mesa EGL/GLES libraries
+  MESA_EGL=$(find /usr/lib -name "libEGL.so*" 2>/dev/null | head -1)
+  MESA_GLES=$(find /usr/lib -name "libGLESv2.so*" 2>/dev/null | head -1)
+  
+  if [ -n "$MESA_EGL" ]; then
+    ln -sf "$MESA_EGL" /usr/lib/libmali.so.1 2>/dev/null || true
+    echo "Created Mali symlink to Mesa EGL: $MESA_EGL"
+  elif [ -n "$MESA_GLES" ]; then
+    ln -sf "$MESA_GLES" /usr/lib/libmali.so.1 2>/dev/null || true
+    echo "Created Mali symlink to Mesa GLES: $MESA_GLES"
+  fi
 fi
 
 # Try to find a working browser
@@ -138,6 +164,31 @@ if [ -z "${CHROMIUM_BIN}" ]; then
   fi
 else
   echo "Using browser: ${CHROMIUM_BIN}"
+fi
+
+# Test if the browser can actually run (check for library issues)
+echo "Testing browser compatibility..."
+if ! "${CHROMIUM_BIN}" --version >/dev/null 2>&1; then
+  echo "WARNING: Browser has library issues, trying to fix..."
+  
+  # Try to install additional libraries that might be missing
+  apt-get install -y \
+    libnss3 \
+    libatk-bridge2.0-0 \
+    libdrm2 \
+    libxkbcommon0 \
+    libxcomposite1 \
+    libxdamage1 \
+    libxrandr2 \
+    libgbm1 \
+    libasound2 || true
+  
+  # Test again
+  if ! "${CHROMIUM_BIN}" --version >/dev/null 2>&1; then
+    echo "Browser still has issues, will try with fallback flags"
+  else
+    echo "Browser compatibility fixed!"
+  fi
 fi
 
 # ==============================
