@@ -43,6 +43,12 @@ This project includes an automated deployment script that sets up a complete kio
 
 #### Quick Deployment
 
+**Option 1: One-line deployment (recommended)**
+```bash
+curl -fsSL https://raw.githubusercontent.com/jrstnly/loft-signage/main/deploy.sh | sudo bash
+```
+
+**Option 2: Clone and run locally**
 1. **Clone the repository on your target machine:**
    ```bash
    sudo git clone https://github.com/jrstnly/loft-signage.git /opt/kiosk/src
