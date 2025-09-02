@@ -23,7 +23,7 @@ BUILD_CMD="npm ci && npm run build" # change to "pnpm i --frozen-lockfile && pnp
 BUILD_OUTPUT_DIR="dist"             # Vite output directory (use "build" for CRA)
 NODE_VERSION="22"                   # Node LTS (22). We'll try NodeSource.
 
-# Chromium flags (tuned for ARM/Wayland kiosk)
+# Chromium flags (tuned for ARM systems with fallbacks)
 CHROMIUM_FLAGS=(
   "--kiosk" "${KIOSK_URL}"
   "--no-first-run"
@@ -35,8 +35,12 @@ CHROMIUM_FLAGS=(
   "--start-maximized"
   "--autoplay-policy=no-user-gesture-required"
   "--enable-features=OverlayScrollbar"
-  "--use-gl=egl"
-  "--ozone-platform=wayland"
+  "--no-sandbox"
+  "--disable-gpu"
+  "--disable-software-rasterizer"
+  "--disable-dev-shm-usage"
+  "--disable-web-security"
+  "--disable-features=VizDisplayCompositor"
 )
 
 # ==============================
@@ -98,12 +102,43 @@ if ! need_cmd chromium && ! need_cmd chromium-browser; then
   apt-get install -y chromium || true
   apt-get install -y chromium-browser || true
 fi
+
+# Install Mali GPU libraries for ARM systems
+echo "Installing Mali GPU libraries for ARM compatibility..."
+apt-get install -y \
+  libmali-rk-dev \
+  libmali-rk \
+  mesa-utils \
+  mesa-utils-extra \
+  libegl1-mesa \
+  libgles2-mesa \
+  libgl1-mesa-glx \
+  libgl1-mesa-dri || true
+
+# Create symlinks for Mali libraries if they don't exist
+if [ ! -f "/usr/lib/arm-linux-gnueabihf/libmali.so.1" ]; then
+  echo "Creating Mali library symlinks..."
+  # Find Mali libraries and create symlinks
+  find /usr/lib -name "libmali.so*" -exec ln -sf {} /usr/lib/arm-linux-gnueabihf/libmali.so.1 \; 2>/dev/null || true
+  find /usr/lib -name "libmali.so*" -exec ln -sf {} /usr/lib/libmali.so.1 \; 2>/dev/null || true
+fi
+
+# Try to find a working browser
 CHROMIUM_BIN="$(detect_browser)"
 if [ -z "${CHROMIUM_BIN}" ]; then
-  echo "ERROR: chromium not found after install. Check package names for your OS image." >&2
-  exit 1
+  echo "Chromium not found, trying alternative browsers..."
+  # Try to install firefox-esr as fallback
+  apt-get install -y firefox-esr || true
+  if command -v firefox-esr >/dev/null 2>&1; then
+    CHROMIUM_BIN="$(command -v firefox-esr)"
+    echo "Using Firefox ESR as fallback browser"
+  else
+    echo "ERROR: No suitable browser found. Check package availability." >&2
+    exit 1
+  fi
+else
+  echo "Using browser: ${CHROMIUM_BIN}"
 fi
-echo "Using browser: ${CHROMIUM_BIN}"
 
 # ==============================
 # 3) Node.js (NodeSource LTS - always install latest)
