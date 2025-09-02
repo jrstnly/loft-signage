@@ -48,6 +48,8 @@ This project includes an automated deployment script that sets up a complete kio
 curl -fsSL https://raw.githubusercontent.com/jrstnly/loft-signage/main/deploy.sh | sudo bash
 ```
 
+> **Note**: The script automatically handles git installation and has fallback methods if git is not available.
+
 **Option 2: Clone and run locally**
 1. **Clone the repository on your target machine:**
    ```bash

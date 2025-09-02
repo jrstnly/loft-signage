@@ -65,7 +65,7 @@ export DEBIAN_FRONTEND=noninteractive
 echo "Installing base packages…"
 apt-get update -y
 apt-get install -y \
-  git curl ca-certificates \
+  git curl ca-certificates unzip \
   cage \
   nginx-light \
   dbus-user-session \
@@ -111,20 +111,56 @@ usermod -aG video,input,render "${KIOSK_USER}" || true
 # ==============================
 # 5) Clone/Pull repo and build
 # ==============================
+echo "Setting up repository at ${REPO_BASE}…"
 mkdir -p "${REPO_BASE}"
-if [ ! -d "${REPO_BASE}/.git" ]; then
-  echo "Cloning ${REPO_URL} → ${REPO_BASE}…"
-  git clone --branch "${REPO_BRANCH}" --depth 1 "${REPO_URL}" "${REPO_BASE}"
+
+# Check if we're running from within the repo (for local testing)
+if [ -f ".git/config" ] && [ -f "package.json" ]; then
+  echo "Running from local repository, copying files…"
+  # We're running from the repo directory, copy everything
+  cp -a . "${REPO_BASE}/"
+  # Remove .git to avoid conflicts
+  rm -rf "${REPO_BASE}/.git"
 else
-  echo "Repo exists; pulling latest…"
-  git -C "${REPO_BASE}" fetch origin "${REPO_BRANCH}" --depth 1
-  git -C "${REPO_BASE}" checkout "${REPO_BRANCH}"
-  git -C "${REPO_BASE}" reset --hard "origin/${REPO_BRANCH}"
+  # Clone from remote
+  if [ ! -d "${REPO_BASE}/.git" ]; then
+    echo "Cloning ${REPO_URL} → ${REPO_BASE}…"
+    if need_cmd git; then
+      git clone --branch "${REPO_BRANCH}" --depth 1 "${REPO_URL}" "${REPO_BASE}"
+    else
+      echo "Git not available, downloading as zip instead…"
+      # Fallback: download as zip if git is not available
+      if need_cmd curl; then
+        ZIP_URL="https://github.com/jrstnly/loft-signage/archive/refs/heads/main.zip"
+        curl -fsSL -o /tmp/loft-signage.zip "${ZIP_URL}"
+        apt-get install -y unzip
+        unzip -q /tmp/loft-signage.zip -d /tmp/
+        mv /tmp/loft-signage-main/* "${REPO_BASE}/"
+        rm -rf /tmp/loft-signage-main /tmp/loft-signage.zip
+      else
+        echo "ERROR: Neither git nor curl available. Cannot download repository." >&2
+        exit 1
+      fi
+    fi
+  else
+    echo "Repo exists; pulling latest…"
+    if need_cmd git; then
+      git -C "${REPO_BASE}" fetch origin "${REPO_BRANCH}" --depth 1
+      git -C "${REPO_BASE}" checkout "${REPO_BRANCH}"
+      git -C "${REPO_BASE}" reset --hard "origin/${REPO_BRANCH}"
+    else
+      echo "Git not available, skipping update of existing repo…"
+    fi
+  fi
 fi
 
 APP_SRC="${REPO_BASE}/${REPO_SUBDIR}"
 if [ ! -f "${APP_SRC}/package.json" ]; then
   echo "ERROR: ${APP_SRC}/package.json not found. Check REPO_SUBDIR in the script config." >&2
+  echo "Current directory: $(pwd)" >&2
+  echo "Repo base: ${REPO_BASE}" >&2
+  echo "App src: ${APP_SRC}" >&2
+  ls -la "${REPO_BASE}" >&2
   exit 1
 fi
 
