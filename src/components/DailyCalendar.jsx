@@ -1,6 +1,6 @@
-import { format, parseISO, setHours, setMinutes } from 'date-fns';
+import { format, setHours } from 'date-fns';
 
-const DailyCalendar = ({ reservations = [], currentDate = new Date(), currentTime = new Date() }) => {
+const DailyCalendar = ({ reservations = [], currentTime = new Date() }) => {
   // Generate time slots from 7am to 9pm with 30-minute intervals
   const timeSlots = [];
   for (let hour = 7; hour <= 21; hour++) {
@@ -51,22 +51,10 @@ const DailyCalendar = ({ reservations = [], currentDate = new Date(), currentTim
     };
   };
 
-  // Helper function to check if a time slot is within an event
-  const isTimeInEvent = (hour, minute, reservation) => {
-    const slotTime = new Date(currentDate);
-    slotTime.setHours(hour, minute, 0, 0);
-    
-    const startTime = new Date(reservation.startTime);
-    const endTime = new Date(reservation.endTime);
-    
-    return slotTime >= startTime && slotTime < endTime;
-  };
-
-  // Get events that overlap with current time slot
-  const getEventsForTimeSlot = (hour, minute) => {
-    return reservations.filter(reservation => 
-      isTimeInEvent(hour, minute, reservation)
-    );
+  // Helper function to format time for display
+  const formatEventTime = (timeString) => {
+    const date = new Date(timeString);
+    return format(date, 'h:mm a');
   };
 
   const currentTimePosition = getCurrentTimePosition();
@@ -137,6 +125,9 @@ const DailyCalendar = ({ reservations = [], currentDate = new Date(), currentTim
               >
                 <div className="event-content">
                   <div className="event-title">Reserved</div>
+                  <div className="event-time">
+                    {formatEventTime(reservation.startTime)} - {formatEventTime(reservation.endTime)}
+                  </div>
                 </div>
               </div>
             );

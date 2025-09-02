@@ -2,13 +2,31 @@ import { useState, useEffect } from 'react';
 import DailyCalendar from './DailyCalendar';
 import { format } from 'date-fns';
 import loftImage from '../assets/loft.jpg';
+import { getLoftReservations } from '../utils/loftApi';
 
 const SignageDisplay = () => {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [currentTime, setCurrentTime] = useState(new Date());
-  
-  // Empty reservations array - no sample events
-  const [reservations] = useState([]);
+  const [reservations, setReservations] = useState([]);
+
+  // Fetch Loft reservations
+  const fetchReservations = async () => {
+    try {
+      const loftReservations = await getLoftReservations();
+      
+      if (loftReservations.length > 0) {
+        setReservations(loftReservations);
+      } else {
+        // No Loft events found - show empty calendar
+        console.log('No Loft events found, showing empty calendar');
+        setReservations([]);
+      }
+    } catch (err) {
+      console.error('Failed to fetch reservations:', err);
+      // Show empty calendar on error
+      setReservations([]);
+    }
+  };
 
   // Update the date and time every minute
   useEffect(() => {
@@ -22,6 +40,15 @@ const SignageDisplay = () => {
     setCurrentTime(new Date());
 
     return () => clearInterval(interval);
+  }, []);
+
+  // Fetch reservations on component mount and refresh every 5 minutes
+  useEffect(() => {
+    fetchReservations();
+    
+    const refreshInterval = setInterval(fetchReservations, 5 * 60 * 1000); // Refresh every 5 minutes
+    
+    return () => clearInterval(refreshInterval);
   }, []);
 
   return (
@@ -49,7 +76,7 @@ const SignageDisplay = () => {
         </div>
       </div>
 
-      {/* Calendar Section */}
+      {/* Calendar Section - Always visible */}
       <div className="calendar-section">
         <DailyCalendar 
           reservations={reservations}
