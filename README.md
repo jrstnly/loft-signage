@@ -28,6 +28,136 @@ A responsive digital signage display for conference rooms and meeting spaces. Fe
    npm run build
    ```
 
+## Deployment
+
+### Automated Deployment from GitHub
+
+This project includes an automated deployment script that sets up a complete kiosk environment on a Linux system (Ubuntu/Debian recommended).
+
+#### Prerequisites
+
+- A Linux server or single-board computer (Raspberry Pi 4, NUC, etc.)
+- Internet connection for package installation
+- Root/sudo access
+- At least 2GB RAM and 4GB storage
+
+#### Quick Deployment
+
+1. **Clone the repository on your target machine:**
+   ```bash
+   sudo git clone https://github.com/jrstnly/loft-signage.git /opt/kiosk/src
+   cd /opt/kiosk/src
+   ```
+
+2. **Make the deploy script executable and run it:**
+   ```bash
+   sudo chmod +x deploy.sh
+   sudo ./deploy.sh
+   ```
+
+3. **The script will automatically:**
+   - Install all required packages (Node.js, Nginx, Chromium, Cage)
+   - Create a kiosk user account
+   - Build the React application
+   - Configure Nginx to serve the app
+   - Set up a systemd service for auto-start
+   - Configure display for portrait orientation (1080x1920)
+   - Enable the kiosk service to start on boot
+
+#### What Gets Installed
+
+- **System Packages**: git, curl, nginx-light, cage (Wayland compositor)
+- **Browser**: Chromium with kiosk mode
+- **Node.js**: Latest LTS version via NodeSource
+- **Build Tools**: npm, pnpm, yarn (auto-detected)
+- **Display Tools**: wlr-randr for display configuration
+
+#### Configuration
+
+The deploy script is highly configurable. Edit the variables at the top of `deploy.sh`:
+
+```bash
+# Kiosk configuration
+KIOSK_USER="kiosk"                    # User account for the kiosk
+APP_ROOT="/opt/kiosk/www"             # Web root directory
+APP_PORT="9000"                       # Nginx port (127.0.0.1:9000)
+AUTO_REBOOT="yes"                     # Auto-reboot after setup
+
+# Repository settings
+REPO_URL="https://github.com/jrstnly/loft-signage.git"
+REPO_BRANCH="main"
+BUILD_CMD="npm ci && npm run build"   # Build command
+BUILD_OUTPUT_DIR="dist"               # Vite output directory
+```
+
+#### Post-Deployment
+
+After successful deployment:
+
+1. **Check the kiosk service:**
+   ```bash
+   sudo systemctl status kiosk.service
+   ```
+
+2. **View logs:**
+   ```bash
+   sudo journalctl -u kiosk.service -f
+   ```
+
+3. **Test the web app:**
+   ```bash
+   curl http://127.0.0.1:9000/health
+   ```
+
+4. **Restart if needed:**
+   ```bash
+   sudo systemctl restart kiosk.service
+   ```
+
+#### Troubleshooting Deployment
+
+**Build fails:**
+- Check Node.js version: `node --version`
+- Verify package.json exists in the cloned directory
+- Check available memory: `free -h`
+
+**Kiosk won't start:**
+- Check display configuration: `wlr-randr`
+- Verify Chromium installation: `which chromium`
+- Check systemd logs: `journalctl -u kiosk.service`
+
+**Display issues:**
+- Run display setup manually: `/usr/local/bin/kiosk-display-setup`
+- Check if Wayland is available: `echo $XDG_SESSION_TYPE`
+
+### Manual Deployment
+
+If you prefer manual setup or need to customize the deployment:
+
+1. **Install dependencies manually:**
+   ```bash
+   sudo apt update
+   sudo apt install nginx nodejs npm
+   ```
+
+2. **Build the application:**
+   ```bash
+   npm ci
+   npm run build
+   ```
+
+3. **Configure Nginx:**
+   ```bash
+   sudo cp -r dist/* /var/www/html/
+   sudo systemctl restart nginx
+   ```
+
+4. **Set up auto-start:**
+   ```bash
+   # Configure your system to start the browser in kiosk mode
+   # This varies by operating system and display manager
+   ```
+
 ## Usage
 
 ### Adding Your Image
