@@ -112,65 +112,46 @@ usermod -aG video,input,render "${KIOSK_USER}" || true
 # 5) Clone/Pull repo and build
 # ==============================
 echo "Setting up repository at ${REPO_BASE}…"
-mkdir -p "${REPO_BASE}"
 
-# Debug: show what's in the current directory
-echo "Current directory contents:"
-ls -la . | head -10
-echo "Target directory contents:"
-ls -la "${REPO_BASE}" | head -10
+# Always start with a clean slate to avoid conflicts
+if [ -d "${REPO_BASE}" ]; then
+  echo "Removing existing repository directory to avoid conflicts…"
+  rm -rf "${REPO_BASE}"
+fi
+mkdir -p "${REPO_BASE}"
 
 # Check if we're running from within the repo (for local testing)
 if [ -f ".git/config" ] && [ -f "package.json" ]; then
   echo "Running from local repository, copying files…"
   # We're running from the repo directory, copy everything
-  # Use rsync to avoid prompts and handle conflicts gracefully
   if need_cmd rsync; then
-    rsync -av --delete --exclude='.git' . "${REPO_BASE}/"
+    rsync -av --exclude='.git' . "${REPO_BASE}/"
   else
-    # Fallback: clear and copy
-    rm -rf "${REPO_BASE:?}/"*
+    # Fallback: copy without git directory
     cp -r . "${REPO_BASE}/"
     rm -rf "${REPO_BASE}/.git"
   fi
 else
   # Clone from remote
-  if [ ! -d "${REPO_BASE}/.git" ]; then
-    echo "Cloning ${REPO_URL} → ${REPO_BASE}…"
-    if need_cmd git; then
-      git clone --branch "${REPO_BRANCH}" --depth 1 "${REPO_URL}" "${REPO_BASE}"
-    else
-      echo "Git not available, downloading as zip instead…"
-      # Fallback: download as zip if git is not available
-      if need_cmd curl; then
-        ZIP_URL="https://github.com/jrstnly/loft-signage/archive/refs/heads/main.zip"
-        curl -fsSL -o /tmp/loft-signage.zip "${ZIP_URL}"
-        apt-get install -y unzip
-        unzip -q /tmp/loft-signage.zip -d /tmp/
-        
-        # Use rsync to avoid prompts and handle conflicts gracefully
-        if need_cmd rsync; then
-          rsync -av --delete /tmp/loft-signage-main/ "${REPO_BASE}/"
-        else
-          # Fallback: clear and copy
-          rm -rf "${REPO_BASE:?}/"*
-          cp -r /tmp/loft-signage-main/* "${REPO_BASE}/"
-        fi
-        
-        rm -rf /tmp/loft-signage-main /tmp/loft-signage.zip
-      else
-        echo "ERROR: Neither git nor curl available. Cannot download repository." >&2
-        exit 1
-      fi
-    fi
+  echo "Cloning ${REPO_URL} → ${REPO_BASE}…"
+  if need_cmd git; then
+    git clone --branch "${REPO_BRANCH}" --depth 1 "${REPO_URL}" "${REPO_BASE}"
   else
-    echo "Repo exists; pulling latest…"
-    if need_cmd git; then
-      git -C "${REPO_BASE}" fetch origin "${REPO_BRANCH}" --depth 1
-      git -C "${REPO_BASE}" checkout "${REPO_BRANCH}"
-      git -C "${REPO_BASE}" reset --hard "origin/${REPO_BRANCH}"
+    echo "Git not available, downloading as zip instead…"
+    # Fallback: download as zip if git is not available
+    if need_cmd curl; then
+      ZIP_URL="https://github.com/jrstnly/loft-signage/archive/refs/heads/main.zip"
+      curl -fsSL -o /tmp/loft-signage.zip "${ZIP_URL}"
+      apt-get install -y unzip
+      unzip -q /tmp/loft-signage.zip -d /tmp/
+      
+      # Copy files from zip to clean directory
+      cp -r /tmp/loft-signage-main/* "${REPO_BASE}/"
+      
+      rm -rf /tmp/loft-signage-main /tmp/loft-signage.zip
     else
-      echo "Git not available, skipping update of existing repo…"
+      echo "ERROR: Neither git nor curl available. Cannot download repository." >&2
+      exit 1
     fi
   fi
 fi
