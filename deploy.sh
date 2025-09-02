@@ -65,7 +65,7 @@ export DEBIAN_FRONTEND=noninteractive
 echo "Installing base packages…"
 apt-get update -y
 apt-get install -y \
-  git curl ca-certificates unzip \
+  git curl ca-certificates unzip rsync \
   cage \
   nginx-light \
   dbus-user-session \
@@ -124,11 +124,15 @@ ls -la "${REPO_BASE}" | head -10
 if [ -f ".git/config" ] && [ -f "package.json" ]; then
   echo "Running from local repository, copying files…"
   # We're running from the repo directory, copy everything
-  # Clear the target directory first to avoid conflicts
-  rm -rf "${REPO_BASE:?}/"*
-  cp -a . "${REPO_BASE}/"
-  # Remove .git to avoid conflicts
-  rm -rf "${REPO_BASE}/.git"
+  # Use rsync to avoid prompts and handle conflicts gracefully
+  if need_cmd rsync; then
+    rsync -av --delete --exclude='.git' . "${REPO_BASE}/"
+  else
+    # Fallback: clear and copy
+    rm -rf "${REPO_BASE:?}/"*
+    cp -r . "${REPO_BASE}/"
+    rm -rf "${REPO_BASE}/.git"
+  fi
 else
   # Clone from remote
   if [ ! -d "${REPO_BASE}/.git" ]; then
@@ -144,9 +148,14 @@ else
         apt-get install -y unzip
         unzip -q /tmp/loft-signage.zip -d /tmp/
         
-        # Clear the target directory first, then copy files
-        rm -rf "${REPO_BASE:?}/"*
-        cp -a /tmp/loft-signage-main/* "${REPO_BASE}/"
+        # Use rsync to avoid prompts and handle conflicts gracefully
+        if need_cmd rsync; then
+          rsync -av --delete /tmp/loft-signage-main/ "${REPO_BASE}/"
+        else
+          # Fallback: clear and copy
+          rm -rf "${REPO_BASE:?}/"*
+          cp -r /tmp/loft-signage-main/* "${REPO_BASE}/"
+        fi
         
         rm -rf /tmp/loft-signage-main /tmp/loft-signage.zip
       else
