@@ -72,20 +72,22 @@ apt-get install -y \
 
 # Install Wayland compositor and display tools (with fallbacks)
 echo "Installing display and compositor tools..."
+
+# Try to install cage (non-blocking - continue even if it fails)
 if apt-cache search cage >/dev/null 2>&1; then
-  apt-get install -y cage
-  echo "✓ cage installed (Wayland compositor)"
+  echo "Attempting to install cage..."
+  apt-get install -y cage || echo "⚠ cage installation failed, will use X11 fallback"
 else
   echo "⚠ cage not available on this distribution, will use X11 fallback"
 fi
 
-# Try different display tools
+# Try different display tools (non-blocking - continue even if they fail)
 if apt-cache search wlr-randr >/dev/null 2>&1; then
-  apt-get install -y wlr-randr
-  echo "✓ wlr-randr installed (display configuration)"
+  echo "Attempting to install wlr-randr..."
+  apt-get install -y wlr-randr || echo "⚠ wlr-randr installation failed"
 elif apt-cache search wlroots-utils >/dev/null 2>&1; then
-  apt-get install -y wlroots-utils
-  echo "✓ wlroots-utils installed (display configuration)"
+  echo "Attempting to install wlroots-utils..."
+  apt-get install -y wlroots-utils || echo "⚠ wlroots-utils installation failed"
 else
   echo "⚠ wlr-randr/wlroots-utils not available, display setup will be limited"
 fi
