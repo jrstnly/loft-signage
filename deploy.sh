@@ -201,10 +201,14 @@ chmod -R 0755 "$(dirname "${APP_ROOT}")"
 # 7) Nginx site (127.0.0.1:PORT)
 # ==============================
 echo "Configuring Nginx site '${SITE_NAME}' on 127.0.0.1:${APP_PORT}…"
-SITES_AVAILABLE="${NGINX_CONF_DIR}/sites-available/${SITE_NAME}"
-SITES_ENABLED="${NGINX_CONF_DIR}/sites-enabled/${SITE_NAME}"
 
-cat > "${SITES_AVAILABLE}" <<NGINX
+# Handle different Nginx directory structures
+if [ -d "${NGINX_CONF_DIR}/sites-available" ]; then
+  # Traditional Ubuntu/Debian structure
+  SITES_AVAILABLE="${NGINX_CONF_DIR}/sites-available/${SITE_NAME}"
+  SITES_ENABLED="${NGINX_CONF_DIR}/sites-enabled/${SITE_NAME}"
+  
+  cat > "${SITES_AVAILABLE}" <<NGINX
 server {
   listen 127.0.0.1:${APP_PORT};
   server_name localhost;
@@ -222,8 +226,30 @@ server {
 }
 NGINX
 
-[ -f "${NGINX_CONF_DIR}/sites-enabled/default" ] && rm -f "${NGINX_CONF_DIR}/sites-enabled/default"
-ln -sf "${SITES_AVAILABLE}" "${SITES_ENABLED}"
+  [ -f "${NGINX_CONF_DIR}/sites-enabled/default" ] && rm -f "${NGINX_CONF_DIR}/sites-enabled/default"
+  ln -sf "${SITES_AVAILABLE}" "${SITES_ENABLED}"
+else
+  # Modern Nginx structure (conf.d)
+  SITE_CONF="${NGINX_CONF_DIR}/conf.d/${SITE_NAME}.conf"
+  
+  cat > "${SITE_CONF}" <<NGINX
+server {
+  listen 127.0.0.1:${APP_PORT};
+  server_name localhost;
+
+  root ${APP_ROOT};
+  index index.html;
+
+  add_header Cache-Control "no-store";
+
+  location = /health { return 200 "ok\n"; add_header Content-Type text/plain; }
+
+  location / {
+    try_files \$uri /index.html;
+  }
+}
+NGINX
+fi
 
 nginx -t
 systemctl enable nginx

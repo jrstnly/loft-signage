@@ -80,6 +80,7 @@ curl -fsSL https://raw.githubusercontent.com/jrstnly/loft-signage/main/deploy.sh
 - **Node.js**: Latest LTS version via NodeSource
 - **Build Tools**: npm, pnpm, yarn (auto-detected)
 - **Display Tools**: wlr-randr for display configuration
+- **Nginx Configuration**: Automatically detects and uses the correct directory structure
 
 #### Configuration
 
