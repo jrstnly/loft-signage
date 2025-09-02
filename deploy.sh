@@ -21,7 +21,7 @@ REPO_BASE="/opt/kiosk/src"          # where the repo will live
 REPO_SUBDIR="."                     # path inside the repo for the web app (e.g., "apps/web")
 BUILD_CMD="npm ci && npm run build" # change to "pnpm i --frozen-lockfile && pnpm build" if needed
 BUILD_OUTPUT_DIR="dist"             # Vite output directory (use "build" for CRA)
-NODE_VERSION="18"                   # Node LTS (18 or 20). We'll try NodeSource.
+NODE_VERSION="22"                   # Node LTS (22). We'll try NodeSource.
 
 # Chromium flags (tuned for ARM/Wayland kiosk)
 CHROMIUM_FLAGS=(

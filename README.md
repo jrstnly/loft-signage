@@ -40,6 +40,7 @@ This project includes an automated deployment script that sets up a complete kio
 - Internet connection for package installation
 - Root/sudo access
 - At least 2GB RAM and 4GB storage
+- **Node.js 22** (automatically installed by the script)
 
 #### Quick Deployment
 
