@@ -1,42 +1,417 @@
-#root {
-  max-width: 1280px;
-  margin: 0 auto;
-  padding: 2rem;
+/* Reset and base styles */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background-color: #000;
+  color: #fff;
+  overflow: hidden;
+}
+
+.App {
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Signage Display Layout */
+.signage-display {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: #e5eae6;
+}
+
+/* Image Section - 16:9 aspect ratio */
+.image-section {
+  width: 100%;
+  height: 36%; /* 16:9 ratio takes up 36% of the screen */
+  min-height: 300px;
+  background: #2a2a2a;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-bottom: 2px solid #333;
+  position: relative;
+  overflow: hidden;
+}
+
+.display-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+}
+
+.image-placeholder {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.placeholder-content {
+  text-align: center;
+  color: #888;
+}
+
+.placeholder-content svg {
+  margin-bottom: 1rem;
+  color: #666;
+}
+
+.placeholder-content p {
+  font-size: 1.5rem;
+  margin-bottom: 0.5rem;
+  font-weight: 500;
+}
+
+.placeholder-content small {
+  font-size: 0.9rem;
+  color: #666;
+}
+
+/* Clock Display - Bottom Left */
+.clock-display {
+  position: absolute;
+  bottom: 20px;
+  left: 20px;
+  z-index: 10;
+}
+
+.time-display {
+  font-size: 1rem;
+  font-weight: 700;
+  color: #142b4a;
+  text-shadow: 
+    0 0 30px rgba(237, 238, 240, 0.8);
+  filter: drop-shadow(0 2px 4px rgba(237, 238, 240, 0.3));
+}
+
+/* Date Display - Bottom Right */
+.date-display {
+  position: absolute;
+  bottom: 20px;
+  right: 20px;
+  z-index: 10;
+}
+
+.date-text {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #142b4a;
+  text-shadow: 
+    0 0 30px rgba(237, 238, 240, 0.8);
+  filter: drop-shadow(0 2px 4px rgba(237, 238, 240, 0.3));
+}
+
+
+
+/* Calendar Section */
+.calendar-section {
+  flex: 1;
+  padding: 1rem;
+  overflow: hidden;
+}
+
+.daily-calendar {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Timeline Layout */
+.timeline-container {
+  flex: 1;
+  display: flex;
+  position: relative;
+  min-height: 0;
+  padding-bottom: 4px;
+}
+
+.time-labels {
+  width: 35px;
+  flex-shrink: 0;
+  position: relative;
+  padding-right: 0.5rem;
+}
+
+.time-label {
+  font-size: 1rem;
+  font-weight: 600;
+  color: rgba(0, 0, 0, 0.8);
+  text-align: right;
+  position: absolute;
+  transform: translateY(-45%);
+  padding: 0;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  width: 100%;
+  left: -10px;
+}
+
+.timeline-grid {
+  flex: 1;
+  position: relative;
+  overflow: visible;
+  padding-bottom: 4px;
+}
+
+.timeline-line {
+  position: absolute;
+  left: 0;
+  right: 40px;
+  height: 1px;
+  background: rgba(0, 0, 0, 0.1);
+}
+
+.hour-line {
+  background: rgba(0, 0, 0, 0.3);
+  height: 2px;
+}
+
+.half-hour-line {
+  background: rgba(0, 0, 0, 0.1);
+  height: 1px;
+}
+
+/* Current Time Indicator */
+.current-time-indicator {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: rgba(255, 255, 255, 0.8);
+  z-index: 20;
+}
+
+/* Current Time Label */
+.current-time-label {
+  position: absolute;
+  right: -10px;
+  font-size: 0.6rem;
+  font-weight: 600;
+  color: #142b4a;
+  background: rgba(255, 255, 255, 0.9);
+  padding: 0.1rem 0.2rem;
+  border-radius: 4px;
+  z-index: 25;
+  transform: translateY(-50%);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.timeline-event {
+  position: absolute;
+  left: 10px;
+  right: 50px;
+  background: #142b4a;
+  border-radius: 6px;
+  padding: 0.5rem;
+  box-shadow: 0 4px 15px rgba(20, 43, 74, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  backdrop-filter: blur(10px);
+  z-index: 10;
+  min-height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.event-content {
+  width: 100%;
   text-align: center;
 }
 
-.logo {
-  height: 6em;
-  padding: 1.5em;
-  will-change: filter;
-  transition: filter 300ms;
-}
-.logo:hover {
-  filter: drop-shadow(0 0 2em #646cffaa);
-}
-.logo.react:hover {
-  filter: drop-shadow(0 0 2em #61dafbaa);
+.event-title {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #fff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
 }
 
-@keyframes logo-spin {
-  from {
-    transform: rotate(0deg);
+/* Responsive Design */
+@media (max-width: 1200px) {
+  .time-label {
+    font-size: 0.9rem;
   }
-  to {
-    transform: rotate(360deg);
+  
+  .event-title {
+    font-size: 0.85rem;
   }
 }
 
-@media (prefers-reduced-motion: no-preference) {
-  a:nth-of-type(2) .logo {
-    animation: logo-spin infinite 20s linear;
+@media (max-width: 768px) {
+  .image-section {
+    height: 30%;
+    min-height: 200px;
+  }
+  
+  .time-labels {
+    width: 45px;
+  }
+  
+  .time-label {
+    font-size: 0.8rem;
+    height: 16px;
+    left: -8px;
+  }
+  
+  .time-display {
+    font-size: 1rem;
+  }
+  
+  .date-text {
+    font-size: 1rem;
+  }
+  
+  .clock-display {
+    bottom: 15px;
+    left: 15px;
+  }
+  
+  .date-display {
+    bottom: 15px;
+    right: 15px;
   }
 }
 
-.card {
-  padding: 2em;
+@media (max-width: 480px) {
+  .image-section {
+    height: 25%;
+    min-height: 150px;
+  }
+  
+  .time-labels {
+    width: 40px;
+  }
+  
+  .time-label {
+    font-size: 0.7rem;
+    height: 14px;
+    left: -6px;
+  }
+  
+  .event-title {
+    font-size: 0.75rem;
+  }
+  
+  .timeline-event {
+    padding: 0.3rem;
+    min-height: 24px;
+    left: 5px;
+    right: 60px;
+  }
+  
+  .timeline-line {
+    right: 50px;
+  }
+  
+  .time-display {
+    font-size: 1.5rem;
+  }
+  
+  .date-text {
+    font-size: 0.9rem;
+  }
+  
+  .clock-display {
+    bottom: 10px;
+    left: 10px;
+  }
+  
+  .date-display {
+    bottom: 10px;
+    right: 10px;
+  }
 }
 
-.read-the-docs {
-  color: #888;
+/* Portrait orientation optimization for TV displays */
+@media (orientation: portrait) and (min-width: 1920px) {
+  .signage-display {
+    flex-direction: row;
+  }
+  
+  .image-section {
+    width: 40%;
+    height: 100%;
+    min-height: auto;
+  }
+  
+  .calendar-section {
+    width: 60%;
+    height: 100%;
+  }
+  
+  .time-slots {
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  }
+}
+
+/* 4K Display Optimization */
+@media (min-width: 3840px) {
+  .time-labels {
+    width: 80px;
+  }
+  
+  .time-label {
+    font-size: 1.8rem;
+    height: 30px;
+    left: -15px;
+  }
+  
+  .event-title {
+    font-size: 1.4rem;
+  }
+  
+  .timeline-event {
+    padding: 0.75rem;
+    min-height: 50px;
+    right: 120px;
+  }
+  
+  .timeline-line {
+    right: 120px;
+  }
+  
+  .time-display {
+    font-size: 3.5rem;
+  }
+  
+  .date-text {
+    font-size: 1.8rem;
+  }
+  
+  .clock-display {
+    bottom: 30px;
+    left: 30px;
+  }
+  
+  .date-display {
+    bottom: 30px;
+    right: 30px;
+  }
+  
+  .display-image {
+    object-position: center 20%;
+  }
+}
+
+/* Timeline hover effects */
+.timeline-event:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(20, 43, 74, 0.4);
+  transition: all 0.3s ease;
 }
