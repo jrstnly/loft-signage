@@ -91,7 +91,7 @@ body {
 }
 
 .time-display {
-  font-size: 1rem;
+  font-size: 2rem;
   font-weight: 700;
   color: #142b4a;
   text-shadow: 
@@ -108,7 +108,7 @@ body {
 }
 
 .date-text {
-  font-size: 1rem;
+  font-size: 2rem;
   font-weight: 600;
   color: #142b4a;
   text-shadow: 
@@ -116,16 +116,12 @@ body {
   filter: drop-shadow(0 2px 4px rgba(237, 238, 240, 0.3));
 }
 
-
-
 /* Calendar Section */
 .calendar-section {
   flex: 1;
   padding: 1rem;
   overflow: hidden;
 }
-
-
 
 .daily-calendar {
   height: 100%;
@@ -143,7 +139,7 @@ body {
 }
 
 .time-labels {
-  width: 35px;
+  width: 60px;
   flex-shrink: 0;
   position: relative;
   padding-right: 0.5rem;
@@ -175,7 +171,7 @@ body {
 .timeline-line {
   position: absolute;
   left: 0;
-  right: 40px;
+  right: 60px;
   height: 1px;
   background: rgba(0, 0, 0, 0.1);
 }
@@ -195,16 +191,16 @@ body {
   position: absolute;
   left: 0;
   right: 0;
-  height: 2px;
-  background: rgba(255, 255, 255, 0.8);
+  height: 3px;
+  background: rgba(255, 255, 255, 1);
   z-index: 20;
 }
 
 /* Current Time Label */
 .current-time-label {
   position: absolute;
-  right: -10px;
-  font-size: 0.6rem;
+  right: -15px;
+  font-size: 1rem;
   font-weight: 600;
   color: #142b4a;
   background: rgba(255, 255, 255, 0.9);
@@ -249,177 +245,6 @@ body {
   font-size: 0.7rem;
   color: rgba(255, 255, 255, 0.9);
   font-weight: 400;
-}
-
-
-
-
-
-/* Responsive Design */
-@media (max-width: 1200px) {
-  .time-label {
-    font-size: 0.9rem;
-  }
-  
-  .event-title {
-    font-size: 0.85rem;
-  }
-}
-
-@media (max-width: 768px) {
-  .image-section {
-    height: 30%;
-    min-height: 200px;
-  }
-  
-  .time-labels {
-    width: 45px;
-  }
-  
-  .time-label {
-    font-size: 0.8rem;
-    height: 16px;
-    left: -8px;
-  }
-  
-  .time-display {
-    font-size: 1rem;
-  }
-  
-  .date-text {
-    font-size: 1rem;
-  }
-  
-  .clock-display {
-    bottom: 15px;
-    left: 15px;
-  }
-  
-  .date-display {
-    bottom: 15px;
-    right: 15px;
-  }
-}
-
-@media (max-width: 480px) {
-  .image-section {
-    height: 25%;
-    min-height: 150px;
-  }
-  
-  .time-labels {
-    width: 40px;
-  }
-  
-  .time-label {
-    font-size: 0.7rem;
-    height: 14px;
-    left: -6px;
-  }
-  
-  .event-title {
-    font-size: 0.75rem;
-  }
-  
-  .timeline-event {
-    padding: 0.3rem;
-    min-height: 24px;
-    left: 5px;
-    right: 60px;
-  }
-  
-  .timeline-line {
-    right: 50px;
-  }
-  
-  .time-display {
-    font-size: 1.5rem;
-  }
-  
-  .date-text {
-    font-size: 0.9rem;
-  }
-  
-  .clock-display {
-    bottom: 10px;
-    left: 10px;
-  }
-  
-  .date-display {
-    bottom: 10px;
-    right: 10px;
-  }
-}
-
-/* Portrait orientation optimization for TV displays */
-@media (orientation: portrait) and (min-width: 1920px) {
-  .signage-display {
-    flex-direction: row;
-  }
-  
-  .image-section {
-    width: 40%;
-    height: 100%;
-    min-height: auto;
-  }
-  
-  .calendar-section {
-    width: 60%;
-    height: 100%;
-  }
-  
-  .time-slots {
-    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-  }
-}
-
-/* 4K Display Optimization */
-@media (min-width: 3840px) {
-  .time-labels {
-    width: 80px;
-  }
-  
-  .time-label {
-    font-size: 1.8rem;
-    height: 30px;
-    left: -15px;
-  }
-  
-  .event-title {
-    font-size: 1.4rem;
-  }
-  
-  .timeline-event {
-    padding: 0.75rem;
-    min-height: 50px;
-    right: 120px;
-  }
-  
-  .timeline-line {
-    right: 120px;
-  }
-  
-  .time-display {
-    font-size: 3.5rem;
-  }
-  
-  .date-text {
-    font-size: 1.8rem;
-  }
-  
-  .clock-display {
-    bottom: 30px;
-    left: 30px;
-  }
-  
-  .date-display {
-    bottom: 30px;
-    right: 30px;
-  }
-  
-  .display-image {
-    object-position: center 20%;
-  }
 }
 
 /* Timeline hover effects */
