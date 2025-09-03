@@ -591,6 +591,36 @@ fi
 
 # Display manager configuration is handled above
 
+# ==============================
+# 9.5) Configure timezone and locale
+# ==============================
+echo "Configuring timezone and locale..."
+
+# Set timezone (change this to your desired timezone)
+# Common options: America/New_York, America/Chicago, America/Denver, America/Los_Angeles
+# Europe/London, Europe/Paris, Asia/Tokyo, etc.
+TIMEZONE="America/Chicago"  # Change this to your timezone
+
+echo "Setting timezone to ${TIMEZONE}..."
+
+# Install timezone data if not present
+apt-get install -y tzdata || echo "⚠ tzdata installation failed"
+
+# Set the timezone
+timedatectl set-timezone "${TIMEZONE}" 2>/dev/null || \
+ln -sf "/usr/share/zoneinfo/${TIMEZONE}" /etc/localtime 2>/dev/null || \
+echo "⚠ Failed to set timezone to ${TIMEZONE}"
+
+# Enable and start NTP synchronization
+systemctl enable systemd-timesyncd >/dev/null 2>&1 || true
+systemctl start systemd-timesyncd >/dev/null 2>&1 || true
+
+# Set locale to ensure proper time/date formatting
+update-locale LANG=en_US.UTF-8 LC_TIME=en_US.UTF-8 2>/dev/null || true
+
+echo "✓ Timezone set to ${TIMEZONE}"
+echo "✓ NTP synchronization enabled"
+
 # Create autostart directory for kiosk user
 sudo -u kiosk mkdir -p /home/kiosk/.config/autostart
 
@@ -627,6 +657,7 @@ echo "Server:       Nginx on http://127.0.0.1:${APP_PORT}"
 echo "Browser:      ${CHROMIUM_BIN}"
 echo "Display Manager: ${DISPLAY_MANAGER:-unknown} with auto-login"
 echo "Display:      1920x1080 rotated 90° (effective 1080x1920)"
+echo "Timezone:     ${TIMEZONE:-unknown}"
 echo "Auto-start:   kiosk.desktop in kiosk user autostart"
 echo
 echo "Useful:"
@@ -639,6 +670,8 @@ elif [ "${DISPLAY_MANAGER}" = "lightdm" ]; then
 fi
 echo "  curl 127.0.0.1:${APP_PORT}/health"
 echo "  sudo -u kiosk chromium --version"
+echo "  timedatectl status"
+echo "  date"
 echo
 echo "Boot now with:  sudo reboot   (${DISPLAY_MANAGER:-display manager} will auto-start)"
 echo "=============================================="
