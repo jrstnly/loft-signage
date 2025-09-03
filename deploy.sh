@@ -81,6 +81,30 @@ apt-get install -y \
   fonts-dejavu-core \
   x11-xserver-utils xauth
 
+# ==============================
+# 2.5) Add Radxa repository key (for Rock Pi 4B compatibility)
+# ==============================
+echo "Adding Radxa repository key for Rock Pi 4B compatibility..."
+
+# Check if we're on a Radxa/Rock Pi device
+if [ -f "/etc/apt/sources.list.d/radxa.list" ] || \
+   grep -q "radxa" /etc/apt/sources.list 2>/dev/null || \
+   [ -f "/etc/os-release" ] && grep -q "radxa\|rock" /etc/os-release 2>/dev/null; then
+  echo "✓ Radxa repository detected, adding GPG key..."
+  
+  # Install the Radxa repository key
+  apt-key adv --keyserver keyserver.ubuntu.com --recv-keys 9B98116C9AA302C7 2>/dev/null || \
+  curl -fsSL https://radxa.com/repo/public.key | apt-key add - 2>/dev/null || \
+  echo "⚠ Failed to add Radxa repository key"
+  
+  # Update package lists to include Radxa packages
+  apt-get update -y
+  
+  echo "✓ Radxa repository key added successfully"
+else
+  echo "ℹ Not a Radxa device, skipping repository key installation"
+fi
+
 # Install display manager and X11 tools
 echo "Installing display manager and X11 tools..."
 
@@ -108,6 +132,12 @@ fi
 # Install X11 utilities
 apt-get install -y x11-utils xrandr xauth || true
 
+# Install Rock Pi specific utilities if available
+if apt-cache search rock-pi 2>/dev/null | grep -q "rock-pi"; then
+  echo "Installing Rock Pi specific utilities..."
+  apt-get install -y rock-pi-tools rock-pi-config || echo "⚠ Rock Pi utilities installation failed"
+fi
+
 # Browser (package name differs by distro)
 if ! need_cmd chromium && ! need_cmd chromium-browser; then
   apt-get install -y chromium || true
@@ -116,6 +146,14 @@ fi
 
 # Install OpenGL/Mesa libraries for ARM systems
 echo "Installing OpenGL/Mesa libraries for ARM compatibility..."
+
+# Try to install Rock Pi specific packages if available
+if apt-cache search rock-pi 2>/dev/null | grep -q "rock-pi"; then
+  echo "✓ Rock Pi packages available, installing..."
+  apt-get install -y rock-pi-tools || echo "⚠ rock-pi-tools installation failed"
+fi
+
+# Install standard Mesa libraries
 apt-get install -y \
   mesa-utils \
   mesa-utils-extra \
@@ -128,6 +166,14 @@ apt-get install -y \
 
 # Try to find and install Mali libraries from available sources
 echo "Searching for Mali GPU libraries..."
+
+# Check for Rock Pi specific Mali libraries first
+if apt-cache search libmali-rk 2>/dev/null | grep -q "libmali-rk"; then
+  echo "✓ Rock Pi Mali libraries available, installing..."
+  apt-get install -y libmali-rk-dev libmali-rk || echo "⚠ Rock Pi Mali libraries installation failed"
+fi
+
+# Check for standard Mali libraries
 if apt-cache search libmali >/dev/null 2>&1; then
   echo "Found Mali packages, installing..."
   apt-get install -y $(apt-cache search libmali | grep -E "^libmali" | awk '{print $1}' | head -3) || true
