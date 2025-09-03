@@ -1,6 +1,6 @@
 // API utility functions for fetching Loft events from Grace Church
 
-const GRACE_CHURCH_API_URL = 'https://api2.grace.church/v2/events/today';
+const GRACE_CHURCH_API_URL = 'https://api2.grace.church/v2/events/today?includePast=true';
 
 // Fetch events from the Grace Church API
 export const fetchGraceChurchEvents = async () => {
