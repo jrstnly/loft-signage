@@ -437,13 +437,39 @@ if command -v xrandr >/dev/null 2>&1; then
   # Wait for X11 to be ready
   sleep 2
   
+  # You can customize the rotation here if needed
+  # Options: left, right, inverted, normal
+  # For most portrait signage displays, "left" works best
+  PREFERRED_ROTATION="left"
+  
   # Try to detect connected output and set portrait mode
   OUT="$(xrandr 2>/dev/null | awk '/ connected/ {print $1; exit}')"
   if [ -n "${OUT}" ]; then
     echo "Setting portrait mode for output: ${OUT}" >&2
-    # Try right rotation first, then left as fallback
-    xrandr --output "$OUT" --rotate right || \
-    xrandr --output "$OUT" --rotate left || true
+    
+    # Get current resolution to determine optimal rotation
+    CURRENT_MODE="$(xrandr 2>/dev/null | awk -v out="$OUT" '$1 == out {getline; print $1; exit}')"
+    echo "Current mode: ${CURRENT_MODE}" >&2
+    
+    # For portrait displays, try preferred rotation first
+    echo "Trying ${PREFERRED_ROTATION} rotation first..." >&2
+    if xrandr --output "$OUT" --rotate "${PREFERRED_ROTATION}" 2>/dev/null; then
+      echo "✓ ${PREFERRED_ROTATION} rotation applied successfully" >&2
+    else
+      echo "${PREFERRED_ROTATION} rotation failed, trying alternative..." >&2
+      # Try the opposite rotation as fallback
+      ALTERNATIVE_ROTATION="right"
+      if [ "${PREFERRED_ROTATION}" = "right" ]; then
+        ALTERNATIVE_ROTATION="left"
+      fi
+      
+      if xrandr --output "$OUT" --rotate "${ALTERNATIVE_ROTATION}" 2>/dev/null; then
+        echo "✓ ${ALTERNATIVE_ROTATION} rotation applied successfully" >&2
+      else
+        echo "⚠ Both rotations failed, display may be in landscape mode" >&2
+      fi
+    fi
+    
     echo "Display rotation completed." >&2
   else
     echo "No connected output found; skipping display setup." >&2
@@ -486,6 +512,13 @@ EOF
   # Ensure the kiosk user has a valid shell and home directory
   chsh -s /bin/bash kiosk 2>/dev/null || true
   
+  # Remove password from kiosk user for true auto-login
+  echo "Removing password from kiosk user for auto-login..."
+  passwd -d kiosk 2>/dev/null || true
+  
+  # Also ensure the user can log in without password
+  usermod -p '' kiosk 2>/dev/null || true
+  
   # Enable and start lightdm properly (it's a template unit)
   systemctl enable lightdm.service
   systemctl set-default graphical.target
@@ -498,6 +531,14 @@ EOF
 [SeatDefaults]
 autologin-user=kiosk
 autologin-user-timeout=0
+EOF
+  
+  # Create additional configuration to ensure auto-login works
+  cat > /etc/lightdm/lightdm.conf.d/60-kiosk.conf << 'EOF'
+[SeatDefaults]
+autologin-user=kiosk
+autologin-user-timeout=0
+autologin-session=ubuntu
 EOF
   
   # If lightdm fails, try to fall back to gdm3
@@ -517,6 +558,10 @@ EOF
   
 elif [ "${DISPLAY_MANAGER}" = "gdm3" ]; then
   echo "Configuring gdm3 (fallback option)..."
+  
+  # Remove password from kiosk user for true auto-login
+  echo "Removing password from kiosk user for auto-login..."
+  passwd -d kiosk 2>/dev/null || true
   
   # Set the default target to graphical
   systemctl set-default graphical.target
