@@ -541,18 +541,14 @@ if [ "${DISPLAY_MANAGER}" = "lightdm" ]; then
   systemctl stop gdm3 2>/dev/null || true
   systemctl disable gdm3 2>/dev/null || true
   
-  # Configure lightdm for auto-login
+  # Configure lightdm for auto-login (using the working configuration)
   cat > /etc/lightdm/lightdm.conf << 'EOF'
 [SeatDefaults]
 autologin-user=kiosk
 autologin-user-timeout=0
-autologin-session=ubuntu
 user-session=ubuntu
-greeter-session=lightdm-gtk-greeter
-
-# Additional settings for better compatibility
-allow-guest=false
-pam-autologin-service=lightdm-autologin
+# Uncomment the following, if running Unity
+#greeter-session=unity-greeter
 EOF
   
   # Ensure the kiosk user has a valid shell and home directory
@@ -572,20 +568,9 @@ EOF
   # Start lightdm
   systemctl start lightdm.service
   
-  # Also create a fallback session configuration
-  cat > /etc/lightdm/lightdm.conf.d/50-ubuntu.conf << 'EOF'
-[SeatDefaults]
-autologin-user=kiosk
-autologin-user-timeout=0
-EOF
-  
-  # Create additional configuration to ensure auto-login works
-  cat > /etc/lightdm/lightdm.conf.d/60-kiosk.conf << 'EOF'
-[SeatDefaults]
-autologin-user=kiosk
-autologin-user-timeout=0
-autologin-session=ubuntu
-EOF
+  # Remove any conflicting configuration files
+  rm -f /etc/lightdm/lightdm.conf.d/50-ubuntu.conf
+  rm -f /etc/lightdm/lightdm.conf.d/60-kiosk.conf
   
   # If lightdm fails, try to fall back to gdm3
   if ! systemctl is-active --quiet lightdm.service; then
