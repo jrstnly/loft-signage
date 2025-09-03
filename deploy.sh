@@ -651,6 +651,16 @@ echo "✓ NTP synchronization enabled"
 # Create autostart directory for kiosk user
 sudo -u kiosk mkdir -p /home/kiosk/.config/autostart
 
+# Create autostart entry for display rotation
+cat > /home/kiosk/.config/autostart/display-rotation.desktop << 'EOF'
+[Desktop Entry]
+Type=Application
+Name=Display Rotation
+Exec=/usr/local/bin/kiosk-display-setup
+Terminal=false
+X-GNOME-Autostart-enabled=true
+EOF
+
 # Create autostart entry for kiosk mode
 cat > /home/kiosk/.config/autostart/kiosk.desktop << 'EOF'
 [Desktop Entry]
@@ -662,6 +672,7 @@ X-GNOME-Autostart-enabled=true
 EOF
 
 # Set proper ownership
+chown kiosk:kiosk /home/kiosk/.config/autostart/display-rotation.desktop
 chown kiosk:kiosk /home/kiosk/.config/autostart/kiosk.desktop
 
 # ==============================
@@ -697,6 +708,8 @@ elif [ "${DISPLAY_MANAGER}" = "lightdm" ]; then
 fi
 echo "  curl 127.0.0.1:${APP_PORT}/health"
 echo "  sudo -u kiosk chromium --version"
+echo "  sudo -u kiosk /usr/local/bin/kiosk-display-setup"
+echo "  xrandr --query"
 echo "  timedatectl status"
 echo "  date"
 echo
