@@ -662,6 +662,15 @@ apt-get install -y gnome-power-manager || echo "⚠ gnome-power-manager installa
 echo "Disabling system sleep and hibernation..."
 systemctl mask sleep.target suspend.target hibernate.target hybrid-sleep.target 2>/dev/null || true
 
+# Disable automatic suspend service specifically
+systemctl mask systemd-suspend.service 2>/dev/null || true
+systemctl mask systemd-hibernate.service 2>/dev/null || true
+systemctl mask systemd-hybrid-sleep.service 2>/dev/null || true
+
+# Disable any other suspend-related services
+systemctl mask upower.service 2>/dev/null || true
+systemctl mask power-profiles-daemon.service 2>/dev/null || true
+
 # Configure power management for the kiosk user
 echo "Configuring power management for kiosk user..."
 
@@ -710,6 +719,31 @@ cat > /home/kiosk/.config/gnome-power-manager/gnome-power-manager.xml << 'EOF'
   </property>
 </channel>
 EOF
+
+# Configure GNOME settings to disable automatic suspend notifications
+sudo -u kiosk mkdir -p /home/kiosk/.config/dconf
+cat > /home/kiosk/.config/dconf/user << 'EOF'
+[org/gnome/settings-daemon/plugins/power]
+sleep-inactive-ac-timeout=0
+sleep-inactive-battery-timeout=0
+sleep-inactive-ac-type='suspend'
+sleep-inactive-battery-type='suspend'
+idle-dim=false
+idle-brightness=100
+critical-battery-action='shutdown'
+EOF
+
+# Also configure dconf settings for the kiosk user
+sudo -u kiosk bash -c 'cat > /home/kiosk/.config/dconf/user << EOF
+[org/gnome/settings-daemon/plugins/power]
+sleep-inactive-ac-timeout=0
+sleep-inactive-battery-timeout=0
+sleep-inactive-ac-type=suspend
+sleep-inactive-battery-type=suspend
+idle-dim=false
+idle-brightness=100
+critical-battery-action=shutdown
+EOF'
 
 # Set proper ownership
 chown -R kiosk:kiosk /home/kiosk/.config
@@ -919,9 +953,89 @@ EOF
 
 chown kiosk:kiosk /home/kiosk/.config/autostart/hide-cursor.desktop
 
+# Create a script to prevent automatic suspend notifications
+cat > /usr/local/bin/kiosk-prevent-suspend << 'BASH'
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Set up environment for the kiosk user
+export XDG_RUNTIME_DIR="/run/user/$(id -u kiosk)"
+export DISPLAY=":0"
+
+# Create runtime directory if it doesn't exist
+mkdir -p "${XDG_RUNTIME_DIR}"
+chown kiosk:kiosk "${XDG_RUNTIME_DIR}"
+
+# Wait for X11 to be ready
+sleep 3
+
+echo "Preventing automatic suspend notifications..." >&2
+
+# Use gsettings to disable automatic suspend (GNOME)
+if command -v gsettings >/dev/null 2>&1; then
+    echo "Configuring GNOME power settings..." >&2
+    
+    # Disable automatic suspend
+    gsettings set org.gnome.settings-daemon.plugins.power sleep-inactive-ac-timeout 0 2>/dev/null || true
+    gsettings set org.gnome.settings-daemon.plugins.power sleep-inactive-battery-timeout 0 2>/dev/null || true
+    gsettings set org.gnome.settings-daemon.plugins.power idle-dim false 2>/dev/null || true
+    gsettings set org.gnome.settings-daemon.plugins.power sleep-inactive-ac-type 'suspend' 2>/dev/null || true
+    gsettings set org.gnome.settings-daemon.plugins.power sleep-inactive-battery-type 'suspend' 2>/dev/null || true
+    
+    echo "✓ GNOME power settings configured" >&2
+fi
+
+# Use dconf to disable automatic suspend (alternative method)
+if command -v dconf >/dev/null 2>&1; then
+    echo "Configuring dconf power settings..." >&2
+    
+    # Disable automatic suspend
+    dconf write /org/gnome/settings-daemon/plugins/power/sleep-inactive-ac-timeout 0 2>/dev/null || true
+    dconf write /org/gnome/settings-daemon/plugins/power/sleep-inactive-battery-timeout 0 2>/dev/null || true
+    dconf write /org/gnome/settings-daemon/plugins/power/idle-dim false 2>/dev/null || true
+    
+    echo "✓ dconf power settings configured" >&2
+fi
+
+# Keep the settings applied
+echo "Keeping automatic suspend disabled..." >&2
+while true; do
+    # Re-apply GNOME settings every 30 seconds
+    if command -v gsettings >/dev/null 2>&1; then
+        gsettings set org.gnome.settings-daemon.plugins.power sleep-inactive-ac-timeout 0 2>/dev/null || true
+        gsettings set org.gnome.settings-daemon.plugins.power sleep-inactive-battery-timeout 0 2>/dev/null || true
+        gsettings set org.gnome.settings-daemon.plugins.power idle-dim false 2>/dev/null || true
+    fi
+    
+    # Re-apply dconf settings every 30 seconds
+    if command -v dconf >/dev/null 2>&1; then
+        dconf write /org/gnome/settings-daemon/plugins/power/sleep-inactive-ac-timeout 0 2>/dev/null || true
+        dconf write /org/gnome/settings-daemon/plugins/power/sleep-inactive-battery-timeout 0 2>/dev/null || true
+        dconf write /org/gnome/settings-daemon/plugins/power/idle-dim false 2>/dev/null || true
+    fi
+    
+    sleep 30
+done
+BASH
+
+chmod +x /usr/local/bin/kiosk-prevent-suspend
+
+# Create autostart entry for suspend prevention
+cat > /home/kiosk/.config/autostart/prevent-suspend.desktop << 'EOF'
+[Desktop Entry]
+Type=Application
+Name=Prevent Suspend
+Exec=/usr/local/bin/kiosk-prevent-suspend
+Terminal=false
+X-GNOME-Autostart-enabled=true
+EOF
+
+chown kiosk:kiosk /home/kiosk/.config/autostart/prevent-suspend.desktop
+
 echo "✓ Power management configured to prevent display sleep"
 echo "✓ Screen saver and DPMS disabled"
 echo "✓ System sleep and hibernation disabled"
+echo "✓ Automatic suspend notifications disabled"
 echo "✓ Cursor hiding configured"
 
 # Create autostart directory for kiosk user
@@ -973,8 +1087,9 @@ echo "Display Manager: ${DISPLAY_MANAGER:-unknown} with auto-login"
 echo "Display:      1920x1080 rotated 90° (effective 1080x1920)"
 echo "Timezone:     ${TIMEZONE:-unknown}"
 echo "Power Mgmt:   Display sleep disabled, system sleep disabled"
+echo "Suspend:      Automatic suspend completely disabled"
 echo "Cursor:       Hidden for kiosk mode"
-echo "Auto-start:   kiosk.desktop, display-rotation, disable-screensaver, hide-cursor"
+echo "Auto-start:   kiosk.desktop, display-rotation, disable-screensaver, hide-cursor, prevent-suspend"
 echo
 echo "Useful:"
 if [ "${DISPLAY_MANAGER}" = "gdm3" ]; then
@@ -990,6 +1105,7 @@ echo "  sudo -u kiosk chromium --version"
 echo "  sudo -u kiosk /usr/local/bin/kiosk-display-setup"
 echo "  sudo -u kiosk /usr/local/bin/kiosk-disable-screensaver"
 echo "  sudo -u kiosk /usr/local/bin/kiosk-hide-cursor"
+echo "  sudo -u kiosk /usr/local/bin/kiosk-prevent-suspend"
 echo "  xrandr --query"
 echo "  timedatectl status"
 echo "  date"
