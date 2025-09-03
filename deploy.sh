@@ -474,12 +474,29 @@ if [ "${DISPLAY_MANAGER}" = "lightdm" ]; then
 [SeatDefaults]
 autologin-user=kiosk
 autologin-user-timeout=0
+autologin-session=ubuntu
 user-session=ubuntu
+greeter-session=lightdm-gtk-greeter
+
+# Additional settings for better compatibility
+allow-guest=false
 EOF
   
   # Enable and start lightdm
   systemctl enable lightdm
+  
+  # Ensure the kiosk user has a valid shell and home directory
+  chsh -s /bin/bash kiosk 2>/dev/null || true
+  
+  # Start lightdm
   systemctl start lightdm
+  
+  # Also create a fallback session configuration
+  cat > /etc/lightdm/lightdm.conf.d/50-ubuntu.conf << 'EOF'
+[SeatDefaults]
+autologin-user=kiosk
+autologin-user-timeout=0
+EOF
   
 elif [ "${DISPLAY_MANAGER}" = "gdm3" ]; then
   echo "Configuring gdm3 (fallback option)..."
