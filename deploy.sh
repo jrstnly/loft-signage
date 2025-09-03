@@ -88,7 +88,7 @@ echo "Installing display manager and X11 tools..."
 echo "Installing display managers..."
 
 # Install lightdm first (more reliable on ARM systems)
-apt-get install -y lightdm || echo "⚠ lightdm installation failed"
+apt-get install -y lightdm lightdm-gtk-greeter || echo "⚠ lightdm installation failed"
 
 # Install gdm3 as backup (Ubuntu default)
 apt-get install -y gdm3 || echo "⚠ gdm3 installation failed"
@@ -480,16 +480,18 @@ greeter-session=lightdm-gtk-greeter
 
 # Additional settings for better compatibility
 allow-guest=false
+pam-autologin-service=lightdm-autologin
 EOF
-  
-  # Enable and start lightdm
-  systemctl enable lightdm
   
   # Ensure the kiosk user has a valid shell and home directory
   chsh -s /bin/bash kiosk 2>/dev/null || true
   
+  # Enable and start lightdm properly (it's a template unit)
+  systemctl enable lightdm.service
+  systemctl set-default graphical.target
+  
   # Start lightdm
-  systemctl start lightdm
+  systemctl start lightdm.service
   
   # Also create a fallback session configuration
   cat > /etc/lightdm/lightdm.conf.d/50-ubuntu.conf << 'EOF'
@@ -497,6 +499,21 @@ EOF
 autologin-user=kiosk
 autologin-user-timeout=0
 EOF
+  
+  # If lightdm fails, try to fall back to gdm3
+  if ! systemctl is-active --quiet lightdm.service; then
+    echo "⚠ lightdm failed to start, trying gdm3 fallback..."
+    systemctl stop lightdm.service 2>/dev/null || true
+    systemctl disable lightdm.service 2>/dev/null || true
+    
+    # Try gdm3 instead
+    apt-get install -y gdm3 || echo "⚠ gdm3 installation failed"
+    if command -v gdm3 >/dev/null 2>&1; then
+      DISPLAY_MANAGER="gdm3"
+      echo "Switching to gdm3 fallback..."
+      # This will be handled by the gdm3 configuration block below
+    fi
+  fi
   
 elif [ "${DISPLAY_MANAGER}" = "gdm3" ]; then
   echo "Configuring gdm3 (fallback option)..."
