@@ -84,13 +84,25 @@ apt-get install -y \
 # Install display manager and X11 tools
 echo "Installing display manager and X11 tools..."
 
-# Install gdm3 (Ubuntu's default display manager)
-apt-get install -y gdm3 || echo "⚠ gdm3 installation failed, will try alternatives"
+# Install multiple display managers for compatibility
+echo "Installing display managers..."
 
-# Try alternative display managers if gdm3 fails
-if ! command -v gdm3 >/dev/null 2>&1; then
-  echo "Installing alternative display managers..."
-  apt-get install -y lightdm || apt-get install -y sddm || true
+# Install lightdm first (more reliable on ARM systems)
+apt-get install -y lightdm || echo "⚠ lightdm installation failed"
+
+# Install gdm3 as backup (Ubuntu default)
+apt-get install -y gdm3 || echo "⚠ gdm3 installation failed"
+
+# Check which ones are available
+DISPLAY_MANAGER=""
+if command -v lightdm >/dev/null 2>&1; then
+  DISPLAY_MANAGER="lightdm"
+  echo "✓ lightdm available (primary choice for ARM)"
+elif command -v gdm3 >/dev/null 2>&1; then
+  DISPLAY_MANAGER="gdm3"
+  echo "✓ gdm3 available (fallback option)"
+else
+  echo "⚠ No display managers available"
 fi
 
 # Install X11 utilities
@@ -445,16 +457,41 @@ BASH
 chmod +x /usr/local/bin/kiosk-display-setup
 
 # ==============================
-# 9) Configure gdm3 for auto-login and kiosk mode
+# 9) Configure display manager for auto-login and kiosk mode
 # ==============================
-echo "Configuring gdm3 for auto-login and kiosk mode..."
+echo "Configuring ${DISPLAY_MANAGER:-display manager} for auto-login and kiosk mode..."
 
-# Enable and start gdm3
-systemctl enable gdm3
-systemctl start gdm3
-
-# Configure gdm3 for auto-login
-cat > /etc/gdm3/custom.conf << 'EOF'
+# Configure display manager based on what's available
+if [ "${DISPLAY_MANAGER}" = "lightdm" ]; then
+  echo "Configuring lightdm (primary choice for ARM)..."
+  
+  # Disable gdm3 if it exists to avoid conflicts
+  systemctl stop gdm3 2>/dev/null || true
+  systemctl disable gdm3 2>/dev/null || true
+  
+  # Configure lightdm for auto-login
+  cat > /etc/lightdm/lightdm.conf << 'EOF'
+[SeatDefaults]
+autologin-user=kiosk
+autologin-user-timeout=0
+user-session=ubuntu
+EOF
+  
+  # Enable and start lightdm
+  systemctl enable lightdm
+  systemctl start lightdm
+  
+elif [ "${DISPLAY_MANAGER}" = "gdm3" ]; then
+  echo "Configuring gdm3 (fallback option)..."
+  
+  # Set the default target to graphical
+  systemctl set-default graphical.target
+  
+  # Start gdm3 manually for immediate use
+  systemctl start gdm3
+  
+  # Configure gdm3 for auto-login
+  cat > /etc/gdm3/custom.conf << 'EOF'
 [daemon]
 AutomaticLogin=kiosk
 AutomaticLoginEnable=true
@@ -468,6 +505,12 @@ Enable=false
 [greeter]
 DisableUserList=true
 EOF
+
+else
+  echo "⚠ No display manager available, will need manual configuration"
+fi
+
+# Display manager configuration is handled above
 
 # Create autostart directory for kiosk user
 sudo -u kiosk mkdir -p /home/kiosk/.config/autostart
@@ -503,17 +546,22 @@ echo "Build out:    ${BUILD_OUTPUT_DIR} → ${APP_ROOT}"
 echo
 echo "Server:       Nginx on http://127.0.0.1:${APP_PORT}"
 echo "Browser:      ${CHROMIUM_BIN}"
-echo "Display Manager: gdm3 with auto-login"
+echo "Display Manager: ${DISPLAY_MANAGER:-unknown} with auto-login"
 echo "Display:      1920x1080 rotated 90° (effective 1080x1920)"
 echo "Auto-start:   kiosk.desktop in kiosk user autostart"
 echo
 echo "Useful:"
-echo "  systemctl status gdm3"
-echo "  systemctl restart gdm3"
+if [ "${DISPLAY_MANAGER}" = "gdm3" ]; then
+  echo "  systemctl status gdm3"
+  echo "  systemctl restart gdm3"
+elif [ "${DISPLAY_MANAGER}" = "lightdm" ]; then
+  echo "  systemctl status lightdm"
+  echo "  systemctl restart lightdm"
+fi
 echo "  curl 127.0.0.1:${APP_PORT}/health"
 echo "  sudo -u kiosk chromium --version"
 echo
-echo "Boot now with:  sudo reboot   (gdm3 will auto-start)"
+echo "Boot now with:  sudo reboot   (${DISPLAY_MANAGER:-display manager} will auto-start)"
 echo "=============================================="
 echo
 
