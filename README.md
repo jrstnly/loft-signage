@@ -75,13 +75,13 @@ curl -fsSL https://raw.githubusercontent.com/jrstnly/loft-signage/main/deploy.sh
 
 #### What Gets Installed
 
-- **System Packages**: git, curl, nginx-light, cage (Wayland compositor, with fallbacks)
+- **System Packages**: git, curl, nginx-light, gdm3 (Ubuntu display manager)
 - **Browser**: Chromium with kiosk mode
 - **Node.js**: Latest LTS version via NodeSource
 - **Build Tools**: npm, pnpm, yarn (auto-detected)
-- **Display Tools**: wlr-randr/wlroots-utils for display configuration (with fallbacks)
+- **Display Tools**: xrandr for X11 display configuration
 - **Nginx Configuration**: Automatically detects and uses the correct directory structure
-- **Compatibility**: Works on Debian, Ubuntu, and other Linux distributions
+- **Compatibility**: Optimized for Ubuntu with ARM support
 
 #### Configuration
 
