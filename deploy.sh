@@ -70,19 +70,7 @@ require_root
 export DEBIAN_FRONTEND=noninteractive
 
 # ==============================
-# 2) OS packages
-# ==============================
-echo "Installing base packages…"
-apt-get update -y
-apt-get install -y \
-  git curl ca-certificates unzip rsync \
-  nginx-light \
-  dbus-user-session \
-  fonts-dejavu-core \
-  x11-xserver-utils xauth
-
-# ==============================
-# 2.5) Add Radxa repository key (for Rock Pi 4B compatibility)
+# 2) Add Radxa repository key (for Rock Pi 4B compatibility)
 # ==============================
 echo "Adding Radxa repository key for Rock Pi 4B compatibility..."
 
@@ -97,13 +85,24 @@ if [ -f "/etc/apt/sources.list.d/radxa.list" ] || \
   curl -fsSL https://radxa.com/repo/public.key | apt-key add - 2>/dev/null || \
   echo "⚠ Failed to add Radxa repository key"
   
-  # Update package lists to include Radxa packages
-  apt-get update -y
-  
   echo "✓ Radxa repository key added successfully"
 else
   echo "ℹ Not a Radxa device, skipping repository key installation"
 fi
+
+# ==============================
+# 3) OS packages
+# ==============================
+echo "Installing base packages…"
+apt-get update -y
+apt-get install -y \
+  git curl ca-certificates unzip rsync \
+  nginx-light \
+  dbus-user-session \
+  fonts-dejavu-core \
+  x11-xserver-utils xauth
+
+
 
 # Install display manager and X11 tools
 echo "Installing display manager and X11 tools..."
