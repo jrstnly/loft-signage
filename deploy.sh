@@ -553,11 +553,6 @@ greeter-session=lightdm-gtk-greeter
 # Additional settings for better compatibility
 allow-guest=false
 pam-autologin-service=lightdm-autologin
-
-# Aggressive auto-login settings to bypass greeter completely
-greeter-hide-users=true
-greeter-show-manual-login=false
-greeter-show-remote-login=false
 EOF
   
   # Ensure the kiosk user has a valid shell and home directory
@@ -577,44 +572,6 @@ EOF
   # Start lightdm
   systemctl start lightdm.service
   
-  # Create systemd override to ensure proper auto-login
-  mkdir -p /etc/systemd/system/lightdm.service.d
-  cat > /etc/systemd/system/lightdm.service.d/override.conf << 'EOF'
-[Service]
-Environment=XDG_SESSION_TYPE=x11
-Environment=DISPLAY=:0
-EOF
-  
-  # Reload systemd and restart lightdm with new configuration
-  systemctl daemon-reload
-  systemctl restart lightdm.service
-  
-  # Also try to create a direct autostart that bypasses display manager issues
-  cat > /etc/systemd/system/kiosk-direct.service << 'EOF'
-[Unit]
-Description=Direct Kiosk Mode (bypasses display manager)
-After=graphical.target
-Wants=graphical.target
-
-[Service]
-Type=simple
-User=kiosk
-Environment=DISPLAY=:0
-Environment=XDG_RUNTIME_DIR=/run/user/1002
-ExecStartPre=/bin/mkdir -p /run/user/1002
-ExecStartPre=/bin/chown kiosk:kiosk /run/user/1002
-ExecStartPre=/bin/chmod 700 /run/user/1002
-ExecStart=/usr/bin/chromium --kiosk http://127.0.0.1:9000 --no-sandbox --disable-gpu --no-first-run --noerrdialogs --disable-session-crashed-bubble --disable-infobars --start-maximized --disable-features=TranslateUI --check-for-update-interval=31536000 --autoplay-policy=no-user-gesture-required --enable-features=OverlayScrollbar --disable-gpu-sandbox --disable-accelerated-2d-canvas --disable-accelerated-jpeg-decoding --disable-accelerated-mjpeg-decode --disable-accelerated-video-decode --disable-accelerated-video-encode
-Restart=always
-RestartSec=5
-
-[Install]
-WantedBy=graphical.target
-EOF
-  
-  # Enable the direct kiosk service as backup
-  systemctl enable kiosk-direct.service
-  
   # Also create a fallback session configuration
   cat > /etc/lightdm/lightdm.conf.d/50-ubuntu.conf << 'EOF'
 [SeatDefaults]
@@ -628,31 +585,6 @@ EOF
 autologin-user=kiosk
 autologin-user-timeout=0
 autologin-session=ubuntu
-
-# Completely bypass the greeter
-greeter-hide-users=true
-greeter-show-manual-login=false
-greeter-show-remote-login=false
-EOF
-  
-  # Create ultra-aggressive configuration to eliminate greeter entirely
-  cat > /etc/lightdm/lightdm.conf.d/70-kiosk-aggressive.conf << 'EOF'
-[SeatDefaults]
-# Force immediate auto-login with no greeter
-autologin-user=kiosk
-autologin-user-timeout=0
-autologin-session=ubuntu
-
-# Disable greeter completely
-greeter-session=lightdm-gtk-greeter
-greeter-hide-users=true
-greeter-show-manual-login=false
-greeter-show-remote-login=false
-
-# Additional settings to force auto-login
-session-cleanup-script=
-session-setup-script=
-autologin-guest=false
 EOF
   
   # If lightdm fails, try to fall back to gdm3
