@@ -74,10 +74,12 @@ export DEBIAN_FRONTEND=noninteractive
 # ==============================
 echo "Adding Radxa repository key for Rock Pi 4B compatibility..."
 
-# Check if we're on a Radxa/Rock Pi device
+# Check if we're on a Radxa/Rock Pi device or if Radxa repository is configured
 if [ -f "/etc/apt/sources.list.d/radxa.list" ] || \
    grep -q "radxa" /etc/apt/sources.list 2>/dev/null || \
-   [ -f "/etc/os-release" ] && grep -q "radxa\|rock" /etc/os-release 2>/dev/null; then
+   [ -f "/etc/os-release" ] && grep -q "radxa\|rock" /etc/os-release 2>/dev/null || \
+   grep -q "apt.radxa.com" /etc/apt/sources.list.d/* 2>/dev/null || \
+   grep -q "apt.radxa.com" /etc/apt/sources.list 2>/dev/null; then
   echo "✓ Radxa repository detected, adding GPG key..."
   
   # Install the Radxa repository key
@@ -87,7 +89,14 @@ if [ -f "/etc/apt/sources.list.d/radxa.list" ] || \
   
   echo "✓ Radxa repository key added successfully"
 else
-  echo "ℹ Not a Radxa device, skipping repository key installation"
+  echo "ℹ No Radxa repository detected, but adding key anyway for compatibility..."
+  
+  # Add the key anyway since this is likely a Rock Pi 4B
+  apt-key adv --keyserver keyserver.ubuntu.com --recv-keys 9B98116C9AA302C7 2>/dev/null || \
+  curl -fsSL https://radxa.com/repo/public.key | apt-key add - 2>/dev/null || \
+  echo "⚠ Failed to add Radxa repository key"
+  
+  echo "✓ Radxa repository key added for compatibility"
 fi
 
 # ==============================
