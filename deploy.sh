@@ -716,6 +716,10 @@ chown -R kiosk:kiosk /home/kiosk/.config
 # Configure system-wide power management
 echo "Configuring system-wide power management..."
 
+# Create systemd configuration directories if they don't exist
+mkdir -p /etc/systemd/logind.conf.d
+mkdir -p /etc/systemd/sleep.conf.d
+
 # Create systemd logind configuration to prevent sleep
 cat > /etc/systemd/logind.conf.d/99-kiosk-no-sleep.conf << 'EOF'
 # Prevent sleep and hibernation on kiosk systems
@@ -752,6 +756,9 @@ echo "Configuring X11 screen saver and DPMS..."
 
 # Install x11-utils if not already installed
 apt-get install -y x11-utils || echo "⚠ x11-utils installation failed"
+
+# Create X11 configuration directory if it doesn't exist
+mkdir -p /etc/X11/xorg.conf.d
 
 # Create X11 configuration to disable screen saver and DPMS
 cat > /etc/X11/xorg.conf.d/99-kiosk-no-sleep.conf << 'EOF'
