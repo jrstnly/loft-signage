@@ -28,13 +28,13 @@ const SignageDisplay = () => {
     }
   };
 
-  // Update the date and time every minute
+  // Update the date and time every 5 seconds
   useEffect(() => {
     const interval = setInterval(() => {
       const now = new Date();
       setCurrentDate(now);
       setCurrentTime(now);
-    }, 60000); // Update every minute
+    }, 5000); // Update every 5 seconds
 
     // Initial update
     setCurrentTime(new Date());
