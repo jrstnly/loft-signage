@@ -648,6 +648,207 @@ update-locale LANG=en_US.UTF-8 LC_TIME=en_US.UTF-8 2>/dev/null || true
 echo "✓ Timezone set to ${TIMEZONE}"
 echo "✓ NTP synchronization enabled"
 
+# ==============================
+# 9.6) Configure power management to prevent display sleep
+# ==============================
+echo "Configuring power management to prevent display sleep..."
+
+# Install power management tools
+apt-get install -y xfce4-power-manager xfce4-power-manager-plugins || echo "⚠ xfce4-power-manager installation failed"
+apt-get install -y gnome-power-manager || echo "⚠ gnome-power-manager installation failed"
+
+# Disable system sleep and hibernation
+echo "Disabling system sleep and hibernation..."
+systemctl mask sleep.target suspend.target hibernate.target hybrid-sleep.target 2>/dev/null || true
+
+# Configure power management for the kiosk user
+echo "Configuring power management for kiosk user..."
+
+# Create power management configuration directory
+sudo -u kiosk mkdir -p /home/kiosk/.config/xfce4/xfconf/xfce-perchannel-xml
+
+# Configure XFCE power management to never sleep
+cat > /home/kiosk/.config/xfce4/xfconf/xfce-perchannel-xml/xfce4-power-manager.xml << 'EOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<channel name="xfce4-power-manager" version="1.0">
+  <property name="xfce4-power-manager" type="empty">
+    <property name="dpms-enabled" type="bool" value="false"/>
+    <property name="dpms-on-ac-sleep" type="uint" value="0"/>
+    <property name="dpms-on-ac-off" type="uint" value="0"/>
+    <property name="dpms-on-battery-sleep" type="uint" value="0"/>
+    <property name="dpms-on-battery-off" type="uint" value="0"/>
+    <property name="brightness-on-ac" type="uint" value="100"/>
+    <property name="brightness-on-battery" type="uint" value="100"/>
+    <property name="brightness-level" type="uint" value="100"/>
+    <property name="sleep-button-action" type="uint" value="0"/>
+    <property name="hibernate-button-action" type="uint" value="0"/>
+    <property name="critical-power-action" type="uint" value="0"/>
+    <property name="lock-screen-suspend-hibernate" type="bool" value="false"/>
+    <property name="logind-handle-lid-switch" type="bool" value="false"/>
+    <property name="logind-handle-suspend-key" type="bool" value="false"/>
+    <property name="logind-handle-hibernate-key" type="bool" value="false"/>
+  </property>
+</channel>
+EOF
+
+# Configure GNOME power management as fallback
+sudo -u kiosk mkdir -p /home/kiosk/.config/gnome-power-manager
+cat > /home/kiosk/.config/gnome-power-manager/gnome-power-manager.xml << 'EOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<channel name="gnome-power-manager" version="1.0">
+  <property name="gnome-power-manager" type="empty">
+    <property name="sleep-computer-ac" type="uint" value="0"/>
+    <property name="sleep-computer-battery" type="uint" value="0"/>
+    <property name="sleep-display-ac" type="uint" value="0"/>
+    <property name="sleep-display-battery" type="uint" value="0"/>
+    <property name="hibernate-computer-ac" type="uint" value="0"/>
+    <property name="hibernate-computer-battery" type="uint" value="0"/>
+    <property name="critical-battery-action" type="uint" value="0"/>
+    <property name="lock-suspend" type="bool" value="false"/>
+    <property name="lock-hibernate" type="bool" value="false"/>
+  </property>
+</channel>
+EOF
+
+# Set proper ownership
+chown -R kiosk:kiosk /home/kiosk/.config
+
+# Configure system-wide power management
+echo "Configuring system-wide power management..."
+
+# Create systemd logind configuration to prevent sleep
+cat > /etc/systemd/logind.conf.d/99-kiosk-no-sleep.conf << 'EOF'
+# Prevent sleep and hibernation on kiosk systems
+HandleLidSwitch=ignore
+HandleLidSwitchExternalPower=ignore
+HandleLidSwitchDocked=ignore
+HandlePowerKey=ignore
+HandleSuspendKey=ignore
+HandleHibernateKey=ignore
+HandleLidSwitchLidOpened=ignore
+IdleAction=ignore
+IdleActionSec=0
+EOF
+
+# Create systemd sleep configuration
+cat > /etc/systemd/sleep.conf.d/99-kiosk-no-sleep.conf << 'EOF'
+# Prevent system sleep and hibernation
+AllowSuspend=no
+AllowHibernation=no
+AllowSuspendThenHibernate=no
+AllowHybridSleep=no
+EOF
+
+# Reload systemd configuration
+systemctl daemon-reload
+
+# Disable specific power management services that might interfere
+systemctl mask systemd-suspend.service 2>/dev/null || true
+systemctl mask systemd-hibernate.service 2>/dev/null || true
+systemctl mask systemd-hybrid-sleep.service 2>/dev/null || true
+
+# Configure X11 screen saver and DPMS
+echo "Configuring X11 screen saver and DPMS..."
+
+# Install x11-utils if not already installed
+apt-get install -y x11-utils || echo "⚠ x11-utils installation failed"
+
+# Create X11 configuration to disable screen saver and DPMS
+cat > /etc/X11/xorg.conf.d/99-kiosk-no-sleep.conf << 'EOF'
+Section "ServerLayout"
+    Identifier     "Layout0"
+    Screen      0  "Screen0" 0 0
+EndSection
+
+Section "Monitor"
+    Identifier     "Monitor0"
+    VendorName     "Unknown"
+    ModelName      "Unknown"
+    Option         "DPMS" "false"
+EndSection
+
+Section "Screen"
+    Identifier     "Screen0"
+    Device         "Device0"
+    Monitor        "Monitor0"
+    DefaultDepth    24
+    SubSection     "Display"
+        Depth       24
+    EndSubSection
+EndSection
+
+Section "Device"
+    Identifier     "Device0"
+    Driver         "modesetting"
+    Option         "DPMS" "false"
+EndSection
+EOF
+
+# Create a script to disable screen saver and DPMS for the kiosk user
+cat > /usr/local/bin/kiosk-disable-screensaver << 'BASH'
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Set up environment for the kiosk user
+export XDG_RUNTIME_DIR="/run/user/$(id -u kiosk)"
+export DISPLAY=":0"
+
+# Create runtime directory if it doesn't exist
+mkdir -p "${XDG_RUNTIME_DIR}"
+chown kiosk:kiosk "${XDG_RUNTIME_DIR}"
+
+# Wait for X11 to be ready
+sleep 3
+
+# Disable screen saver and DPMS
+if command -v xset >/dev/null 2>&1; then
+    echo "Disabling screen saver and DPMS..." >&2
+    
+    # Disable screen saver
+    xset s off 2>/dev/null || true
+    
+    # Disable DPMS (Display Power Management Signaling)
+    xset -dpms 2>/dev/null || true
+    
+    # Set screen saver timeout to 0 (never)
+    xset s 0 2>/dev/null || true
+    
+    echo "✓ Screen saver and DPMS disabled" >&2
+else
+    echo "⚠ xset not available, cannot disable screen saver" >&2
+fi
+
+# Keep the script running to maintain settings
+echo "Keeping power management disabled..." >&2
+while true; do
+    # Re-apply settings every 30 seconds to ensure they stay disabled
+    if command -v xset >/dev/null 2>&1; then
+        xset s off 2>/dev/null || true
+        xset -dpms 2>/dev/null || true
+        xset s 0 2>/dev/null || true
+    fi
+    sleep 30
+done
+EOF
+
+chmod +x /usr/local/bin/kiosk-disable-screensaver
+
+# Create autostart entry for power management
+cat > /home/kiosk/.config/autostart/disable-screensaver.desktop << 'EOF'
+[Desktop Entry]
+Type=Application
+Name=Disable Screen Saver
+Exec=/usr/local/bin/kiosk-disable-screensaver
+Terminal=false
+X-GNOME-Autostart-enabled=true
+EOF
+
+chown kiosk:kiosk /home/kiosk/.config/autostart/disable-screensaver.desktop
+
+echo "✓ Power management configured to prevent display sleep"
+echo "✓ Screen saver and DPMS disabled"
+echo "✓ System sleep and hibernation disabled"
+
 # Create autostart directory for kiosk user
 sudo -u kiosk mkdir -p /home/kiosk/.config/autostart
 
@@ -696,7 +897,8 @@ echo "Browser:      ${CHROMIUM_BIN}"
 echo "Display Manager: ${DISPLAY_MANAGER:-unknown} with auto-login"
 echo "Display:      1920x1080 rotated 90° (effective 1080x1920)"
 echo "Timezone:     ${TIMEZONE:-unknown}"
-echo "Auto-start:   kiosk.desktop in kiosk user autostart"
+echo "Power Mgmt:   Display sleep disabled, system sleep disabled"
+echo "Auto-start:   kiosk.desktop, display-rotation, disable-screensaver"
 echo
 echo "Useful:"
 if [ "${DISPLAY_MANAGER}" = "gdm3" ]; then
@@ -709,9 +911,12 @@ fi
 echo "  curl 127.0.0.1:${APP_PORT}/health"
 echo "  sudo -u kiosk chromium --version"
 echo "  sudo -u kiosk /usr/local/bin/kiosk-display-setup"
+echo "  sudo -u kiosk /usr/local/bin/kiosk-disable-screensaver"
 echo "  xrandr --query"
 echo "  timedatectl status"
 echo "  date"
+echo "  systemctl status systemd-suspend.service"
+echo "  systemctl status systemd-hibernate.service"
 echo
 echo "Boot now with:  sudo reboot   (${DISPLAY_MANAGER:-display manager} will auto-start)"
 echo "=============================================="
