@@ -130,13 +130,7 @@ else
 fi
 
 # Install X11 utilities
-apt-get install -y x11-utils xrandr xauth || true
-
-# Install Rock Pi specific utilities if available
-if apt-cache search rock-pi 2>/dev/null | grep -q "rock-pi"; then
-  echo "Installing Rock Pi specific utilities..."
-  apt-get install -y rock-pi-tools rock-pi-config || echo "⚠ Rock Pi utilities installation failed"
-fi
+apt-get install -y x11-utils xauth || true
 
 # Browser (package name differs by distro)
 if ! need_cmd chromium && ! need_cmd chromium-browser; then
@@ -146,12 +140,6 @@ fi
 
 # Install OpenGL/Mesa libraries for ARM systems
 echo "Installing OpenGL/Mesa libraries for ARM compatibility..."
-
-# Try to install Rock Pi specific packages if available
-if apt-cache search rock-pi 2>/dev/null | grep -q "rock-pi"; then
-  echo "✓ Rock Pi packages available, installing..."
-  apt-get install -y rock-pi-tools || echo "⚠ rock-pi-tools installation failed"
-fi
 
 # Install standard Mesa libraries
 apt-get install -y \
