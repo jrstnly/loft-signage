@@ -836,7 +836,7 @@ while true; do
     fi
     sleep 30
 done
-EOF
+BASH
 
 chmod +x /usr/local/bin/kiosk-disable-screensaver
 
