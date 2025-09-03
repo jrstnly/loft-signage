@@ -557,11 +557,10 @@ EOF
   # Also ensure the user can log in without password
   usermod -p '' kiosk 2>/dev/null || true
   
-  # Enable and start lightdm properly (it's a template unit)
-  systemctl enable lightdm.service
+  # Set default target to graphical (this enables the display manager)
   systemctl set-default graphical.target
   
-  # Start lightdm
+  # Start lightdm (it's a template unit, so we start it directly)
   systemctl start lightdm.service
   
   # Remove any conflicting configuration files
@@ -914,6 +913,7 @@ if [ "${DISPLAY_MANAGER}" = "gdm3" ]; then
 elif [ "${DISPLAY_MANAGER}" = "lightdm" ]; then
   echo "  systemctl status lightdm"
   echo "  systemctl restart lightdm"
+  echo "  Note: lightdm is a template unit, use 'systemctl start lightdm' to start"
 fi
 echo "  curl 127.0.0.1:${APP_PORT}/health"
 echo "  sudo -u kiosk chromium --version"
