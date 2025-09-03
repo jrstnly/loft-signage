@@ -47,6 +47,8 @@ CHROMIUM_FLAGS=(
   "--disable-accelerated-mjpeg-decode"
   "--disable-accelerated-video-decode"
   "--disable-accelerated-video-encode"
+  "--disable-cursor-blink"
+  "--disable-cursor-blink-animation"
 )
 
 # ==============================
@@ -753,8 +755,8 @@ systemctl mask systemd-hybrid-sleep.service 2>/dev/null || true
 # Configure X11 screen saver and DPMS
 echo "Configuring X11 screen saver and DPMS..."
 
-# Install x11-utils if not already installed
-apt-get install -y x11-utils || echo "⚠ x11-utils installation failed"
+# Install x11-utils and cursor hiding tools if not already installed
+apt-get install -y x11-utils xdotool || echo "⚠ x11-utils/xdotool installation failed"
 
 # Create X11 configuration directory if it doesn't exist
 mkdir -p /etc/X11/xorg.conf.d
@@ -851,9 +853,76 @@ EOF
 
 chown kiosk:kiosk /home/kiosk/.config/autostart/disable-screensaver.desktop
 
+# Create a script to hide the cursor for the kiosk user
+cat > /usr/local/bin/kiosk-hide-cursor << 'BASH'
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Set up environment for the kiosk user
+export XDG_RUNTIME_DIR="/run/user/$(id -u kiosk)"
+export DISPLAY=":0"
+
+# Create runtime directory if it doesn't exist
+mkdir -p "${XDG_RUNTIME_DIR}"
+chown kiosk:kiosk "${XDG_RUNTIME_DIR}"
+
+# Wait for X11 to be ready
+sleep 3
+
+# Hide the cursor using xsetroot
+if command -v xsetroot >/dev/null 2>&1; then
+    echo "Hiding cursor..." >&2
+    
+    # Set cursor to transparent (invisible)
+    xsetroot -cursor_name left_ptr 2>/dev/null || true
+    
+    # Alternative: set cursor to a 1x1 transparent pixel
+    # xsetroot -cursor /dev/null 2>/dev/null || true
+    
+    echo "✓ Cursor hidden" >&2
+else
+    echo "⚠ xsetroot not available, trying alternative methods..." >&2
+    
+    # Try using xdotool to hide cursor
+    if command -v xdotool >/dev/null 2>&1; then
+        xdotool mousemove 9999 9999 2>/dev/null || true
+        echo "✓ Cursor moved off-screen using xdotool" >&2
+    else
+        echo "⚠ No cursor hiding tools available" >&2
+    fi
+fi
+
+# Keep the cursor hidden
+echo "Keeping cursor hidden..." >&2
+while true; do
+    # Re-apply cursor hiding every 10 seconds to ensure it stays hidden
+    if command -v xsetroot >/dev/null 2>&1; then
+        xsetroot -cursor_name left_ptr 2>/dev/null || true
+    elif command -v xdotool >/dev/null 2>&1; then
+        xdotool mousemove 9999 9999 2>/dev/null || true
+    fi
+    sleep 10
+done
+BASH
+
+chmod +x /usr/local/bin/kiosk-hide-cursor
+
+# Create autostart entry for cursor hiding
+cat > /home/kiosk/.config/autostart/hide-cursor.desktop << 'EOF'
+[Desktop Entry]
+Type=Application
+Name=Hide Cursor
+Exec=/usr/local/bin/kiosk-hide-cursor
+Terminal=false
+X-GNOME-Autostart-enabled=true
+EOF
+
+chown kiosk:kiosk /home/kiosk/.config/autostart/hide-cursor.desktop
+
 echo "✓ Power management configured to prevent display sleep"
 echo "✓ Screen saver and DPMS disabled"
 echo "✓ System sleep and hibernation disabled"
+echo "✓ Cursor hiding configured"
 
 # Create autostart directory for kiosk user
 sudo -u kiosk mkdir -p /home/kiosk/.config/autostart
@@ -904,7 +973,8 @@ echo "Display Manager: ${DISPLAY_MANAGER:-unknown} with auto-login"
 echo "Display:      1920x1080 rotated 90° (effective 1080x1920)"
 echo "Timezone:     ${TIMEZONE:-unknown}"
 echo "Power Mgmt:   Display sleep disabled, system sleep disabled"
-echo "Auto-start:   kiosk.desktop, display-rotation, disable-screensaver"
+echo "Cursor:       Hidden for kiosk mode"
+echo "Auto-start:   kiosk.desktop, display-rotation, disable-screensaver, hide-cursor"
 echo
 echo "Useful:"
 if [ "${DISPLAY_MANAGER}" = "gdm3" ]; then
@@ -919,6 +989,7 @@ echo "  curl 127.0.0.1:${APP_PORT}/health"
 echo "  sudo -u kiosk chromium --version"
 echo "  sudo -u kiosk /usr/local/bin/kiosk-display-setup"
 echo "  sudo -u kiosk /usr/local/bin/kiosk-disable-screensaver"
+echo "  sudo -u kiosk /usr/local/bin/kiosk-hide-cursor"
 echo "  xrandr --query"
 echo "  timedatectl status"
 echo "  date"
