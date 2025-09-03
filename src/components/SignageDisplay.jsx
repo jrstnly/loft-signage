@@ -42,11 +42,11 @@ const SignageDisplay = () => {
     return () => clearInterval(interval);
   }, []);
 
-  // Fetch reservations on component mount and refresh every 5 minutes
+  // Fetch reservations on component mount and refresh every minute
   useEffect(() => {
     fetchReservations();
     
-    const refreshInterval = setInterval(fetchReservations, 5 * 60 * 1000); // Refresh every 5 minutes
+    const refreshInterval = setInterval(fetchReservations, 60 * 1000); // Refresh every minute
     
     return () => clearInterval(refreshInterval);
   }, []);
