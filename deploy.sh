@@ -384,7 +384,21 @@ cp -a "${APP_SRC}/${BUILD_OUTPUT_DIR}/." "${APP_ROOT}/"
 # If nothing was built, drop a friendly placeholder
 if [ ! -f "${APP_ROOT}/index.html" ]; then
   cat > "${APP_ROOT}/index.html" <<'HTML'
-<!doctype html><html><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><title>Kiosk</title></head>
+<!doctype html><html><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><title>Kiosk</title>
+<style>
+/* Hide cursor globally */
+* {
+  cursor: none !important;
+}
+html, body {
+  cursor: none !important;
+}
+/* Ensure no cursor on any element */
+a, button, input, textarea, select, [role="button"] {
+  cursor: none !important;
+}
+</style>
+</head>
 <body style="display:flex;align-items:center;justify-content:center;height:100vh;background:#0f172a;color:#e2e8f0;font:16px system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif">
   <div style="text-align:center">
     <h1 style="margin:0 0 8px 0">Kiosk is live (serving static files)</h1>
@@ -1021,7 +1035,7 @@ systemctl mask systemd-hybrid-sleep.service 2>/dev/null || true
 echo "Configuring X11 screen saver and DPMS..."
 
 # Install x11-utils and cursor hiding tools if not already installed
-apt-get install -y x11-utils xdotool || echo "⚠ x11-utils/xdotool installation failed"
+apt-get install -y x11-utils xdotool unclutter imagemagick || echo "⚠ x11-utils/xdotool/unclutter/imagemagick installation failed"
 
 # Create X11 configuration directory if it doesn't exist
 mkdir -p /etc/X11/xorg.conf.d
@@ -1054,6 +1068,32 @@ Section "Device"
     Identifier     "Device0"
     Driver         "modesetting"
     Option         "DPMS" "false"
+EndSection
+EOF
+
+# Create X11 configuration to hide cursor globally
+cat > /etc/X11/xorg.conf.d/99-kiosk-hide-cursor.conf << 'EOF'
+Section "ServerLayout"
+    Identifier     "Layout0"
+    Screen      0  "Screen0" 0 0
+EndSection
+
+Section "InputDevice"
+    Identifier     "Mouse0"
+    Driver         "mouse"
+    Option         "Protocol" "auto"
+    Option         "Device" "/dev/input/mice"
+    Option         "ZAxisMapping" "4 5"
+    Option         "Emulate3Buttons" "no"
+    Option         "CursorTheme" "none"
+    Option         "CursorSize" "0"
+EndSection
+
+Section "InputDevice"
+    Identifier     "Keyboard0"
+    Driver         "kbd"
+    Option         "XkbModel" "pc105"
+    Option         "XkbLayout" "us"
 EndSection
 EOF
 
@@ -1134,39 +1174,96 @@ chown kiosk:kiosk "${XDG_RUNTIME_DIR}"
 # Wait for X11 to be ready
 sleep 3
 
-# Hide the cursor using xsetroot
-if command -v xsetroot >/dev/null 2>&1; then
-    echo "Hiding cursor..." >&2
-    
-    # Set cursor to transparent (invisible)
-    xsetroot -cursor_name left_ptr 2>/dev/null || true
-    
-    # Alternative: set cursor to a 1x1 transparent pixel
-    # xsetroot -cursor /dev/null 2>/dev/null || true
-    
-    echo "✓ Cursor hidden" >&2
+echo "Hiding cursor using multiple methods..." >&2
+
+# Method 1: Use unclutter to hide cursor when not moving
+if command -v unclutter >/dev/null 2>&1; then
+    echo "Starting unclutter to hide cursor..." >&2
+    # Start unclutter in background to hide cursor after 1 second of inactivity
+    unclutter -idle 1 -root &
+    UNCLUTTER_PID=$!
+    echo "✓ unclutter started with PID $UNCLUTTER_PID" >&2
 else
-    echo "⚠ xsetroot not available, trying alternative methods..." >&2
-    
-    # Try using xdotool to hide cursor
-    if command -v xdotool >/dev/null 2>&1; then
-        xdotool mousemove 9999 9999 2>/dev/null || true
-        echo "✓ Cursor moved off-screen using xdotool" >&2
-    else
-        echo "⚠ No cursor hiding tools available" >&2
+    echo "⚠ unclutter not available, installing..." >&2
+    apt-get update -y && apt-get install -y unclutter >/dev/null 2>&1 || echo "⚠ Failed to install unclutter"
+    if command -v unclutter >/dev/null 2>&1; then
+        unclutter -idle 1 -root &
+        UNCLUTTER_PID=$!
+        echo "✓ unclutter installed and started with PID $UNCLUTTER_PID" >&2
     fi
 fi
 
-# Keep the cursor hidden
+# Method 2: Use xsetroot with transparent cursor
+if command -v xsetroot >/dev/null 2>&1; then
+    echo "Setting transparent cursor with xsetroot..." >&2
+    
+    # Create a 1x1 transparent cursor
+    if command -v convert >/dev/null 2>&1; then
+        # Use ImageMagick to create a transparent cursor
+        convert -size 1x1 xc:transparent /tmp/transparent_cursor.png 2>/dev/null || true
+        if [ -f /tmp/transparent_cursor.png ]; then
+            xsetroot -cursor /tmp/transparent_cursor.png /tmp/transparent_cursor.png 2>/dev/null || true
+            echo "✓ Transparent cursor set with ImageMagick" >&2
+        fi
+    else
+        # Try to install ImageMagick for better cursor hiding
+        apt-get update -y && apt-get install -y imagemagick >/dev/null 2>&1 || echo "⚠ Failed to install ImageMagick"
+        if command -v convert >/dev/null 2>&1; then
+            convert -size 1x1 xc:transparent /tmp/transparent_cursor.png 2>/dev/null || true
+            if [ -f /tmp/transparent_cursor.png ]; then
+                xsetroot -cursor /tmp/transparent_cursor.png /tmp/transparent_cursor.png 2>/dev/null || true
+                echo "✓ Transparent cursor set with ImageMagick" >&2
+            fi
+        fi
+    fi
+fi
+
+# Method 3: Use xdotool to move cursor off-screen as fallback
+if command -v xdotool >/dev/null 2>&1; then
+    echo "Moving cursor off-screen with xdotool..." >&2
+    # Move cursor to bottom-right corner (off-screen)
+    xdotool mousemove 9999 9999 2>/dev/null || true
+    echo "✓ Cursor moved off-screen" >&2
+fi
+
+# Method 4: Use xset to disable cursor
+if command -v xset >/dev/null 2>&1; then
+    echo "Disabling cursor with xset..." >&2
+    # This doesn't hide the cursor but can help with some applications
+    xset -cursor off 2>/dev/null || true
+    echo "✓ Cursor disabled with xset" >&2
+fi
+
+echo "✓ Cursor hiding methods applied" >&2
+
+# Keep the cursor hidden continuously
 echo "Keeping cursor hidden..." >&2
 while true; do
-    # Re-apply cursor hiding every 10 seconds to ensure it stays hidden
-    if command -v xsetroot >/dev/null 2>&1; then
-        xsetroot -cursor_name left_ptr 2>/dev/null || true
-    elif command -v xdotool >/dev/null 2>&1; then
+    # Re-apply cursor hiding every 5 seconds to ensure it stays hidden
+    
+    # Re-apply unclutter if it died
+    if [ -n "${UNCLUTTER_PID:-}" ] && ! kill -0 "$UNCLUTTER_PID" 2>/dev/null; then
+        echo "unclutter died, restarting..." >&2
+        unclutter -idle 1 -root &
+        UNCLUTTER_PID=$!
+    fi
+    
+    # Re-apply transparent cursor
+    if command -v xsetroot >/dev/null 2>&1 && [ -f /tmp/transparent_cursor.png ]; then
+        xsetroot -cursor /tmp/transparent_cursor.png /tmp/transparent_cursor.png 2>/dev/null || true
+    fi
+    
+    # Re-apply off-screen positioning
+    if command -v xdotool >/dev/null 2>&1; then
         xdotool mousemove 9999 9999 2>/dev/null || true
     fi
-    sleep 10
+    
+    # Re-apply xset cursor disable
+    if command -v xset >/dev/null 2>&1; then
+        xset -cursor off 2>/dev/null || true
+    fi
+    
+    sleep 5
 done
 BASH
 
@@ -1183,6 +1280,84 @@ X-GNOME-Autostart-enabled=true
 EOF
 
 chown kiosk:kiosk /home/kiosk/.config/autostart/hide-cursor.desktop
+
+# Create a script to disable mouse input (aggressive cursor hiding)
+cat > /usr/local/bin/kiosk-disable-mouse << 'BASH'
+#!/usr/bin/env bash
+set -euo pipefail
+
+echo "Disabling mouse input devices for cursor hiding..." >&2
+
+# Method 1: Disable mouse input devices using xinput
+if command -v xinput >/dev/null 2>&1; then
+    echo "Using xinput to disable mouse devices..." >&2
+    
+    # List all input devices
+    xinput list | grep -i "pointer\|mouse" | while read -r line; do
+        device_id=$(echo "$line" | grep -o "id=[0-9]*" | cut -d= -f2)
+        device_name=$(echo "$line" | sed 's/.*id=[0-9]*\s*//')
+        
+        if [ -n "$device_id" ]; then
+            echo "Disabling mouse device: $device_name (ID: $device_id)" >&2
+            xinput disable "$device_id" 2>/dev/null || true
+        fi
+    done
+    
+    echo "✓ Mouse devices disabled with xinput" >&2
+fi
+
+# Method 2: Disable mouse input devices using evdev
+if [ -d /sys/class/input ]; then
+    echo "Disabling mouse input devices using evdev..." >&2
+    
+    # Find mouse devices
+    find /sys/class/input -name "mouse*" -o -name "*pointer*" | while read -r device; do
+        if [ -f "$device/uevent" ]; then
+            device_name=$(grep "NAME=" "$device/uevent" | cut -d'"' -f2)
+            echo "Found mouse device: $device_name" >&2
+            
+            # Try to disable the device
+            if [ -w "$device/uevent" ]; then
+                echo "add" > "$device/uevent" 2>/dev/null || true
+                echo "✓ Disabled mouse device: $device_name" >&2
+            fi
+        fi
+    done
+fi
+
+# Method 3: Use modprobe to blacklist mouse modules (requires root)
+if [ "$(id -u)" -eq 0 ]; then
+    echo "Blacklisting mouse kernel modules..." >&2
+    
+    # Blacklist common mouse modules
+    echo "blacklist psmouse" >> /etc/modprobe.d/kiosk-blacklist.conf 2>/dev/null || true
+    echo "blacklist usbmouse" >> /etc/modprobe.d/kiosk-blacklist.conf 2>/dev/null || true
+    echo "blacklist hid_mouse" >> /etc/modprobe.d/kiosk-blacklist.conf 2>/dev/null || true
+    
+    # Update initramfs if available
+    if command -v update-initramfs >/dev/null 2>&1; then
+        update-initramfs -u 2>/dev/null || true
+    fi
+    
+    echo "✓ Mouse modules blacklisted" >&2
+fi
+
+echo "✓ Mouse input devices disabled" >&2
+BASH
+
+chmod +x /usr/local/bin/kiosk-disable-mouse
+
+# Create autostart entry for mouse disabling
+cat > /home/kiosk/.config/autostart/disable-mouse.desktop << 'EOF'
+[Desktop Entry]
+Type=Application
+Name=Disable Mouse
+Exec=/usr/local/bin/kiosk-disable-mouse
+Terminal=false
+X-GNOME-Autostart-enabled=true
+EOF
+
+chown kiosk:kiosk /home/kiosk/.config/autostart/disable-mouse.desktop
 
 # Create a script to prevent automatic suspend notifications
 cat > /usr/local/bin/kiosk-prevent-suspend << 'BASH'
@@ -1473,6 +1648,49 @@ EOF
 chown kiosk:kiosk /home/kiosk/.config/autostart/display-rotation.desktop
 chown kiosk:kiosk /home/kiosk/.config/autostart/kiosk.desktop
 
+# Add cursor hiding CSS to all HTML files
+echo "Adding cursor hiding CSS to all HTML files..."
+find "${APP_ROOT}" -name "*.html" -type f | while read -r html_file; do
+  if [ -f "$html_file" ]; then
+    # Check if cursor hiding CSS is already present
+    if ! grep -q "cursor: none" "$html_file"; then
+      echo "Adding cursor hiding CSS to: $html_file"
+      
+      # Create a temporary file with the cursor hiding CSS
+      cat > /tmp/cursor_hide_css << 'CSS'
+<style>
+/* Hide cursor globally for kiosk mode */
+* {
+  cursor: none !important;
+}
+html, body {
+  cursor: none !important;
+}
+/* Ensure no cursor on any element */
+a, button, input, textarea, select, [role="button"], [tabindex] {
+  cursor: none !important;
+}
+/* Hide cursor on focus states */
+*:focus {
+  cursor: none !important;
+}
+/* Hide cursor on hover states */
+*:hover {
+  cursor: none !important;
+}
+</style>
+CSS
+      
+      # Insert the CSS after the opening <head> tag
+      sed -i 's/<head>/<head>\n<!-- Cursor hiding CSS for kiosk mode -->\n<style>\n\/* Hide cursor globally for kiosk mode *\/\n* {\n  cursor: none !important;\n}\nhtml, body {\n  cursor: none !important;\n}\n\/* Ensure no cursor on any element *\/\na, button, input, textarea, select, [role="button"], [tabindex] {\n  cursor: none !important;\n}\n\/* Hide cursor on focus states *\/\n*:focus {\n  cursor: none !important;\n}\n\/* Hide cursor on hover states *\/\n*:hover {\n  cursor: none !important;\n}\n<\/style>/' "$html_file"
+      
+      echo "✓ Cursor hiding CSS added to: $html_file"
+    else
+      echo "Cursor hiding CSS already present in: $html_file"
+    fi
+  fi
+done
+
 echo "✓ Auto-login configuration completed"
 echo "✓ Test with: /usr/local/bin/test-autologin"
 
@@ -1609,8 +1827,8 @@ echo "Display:      1920x1080 rotated 90° (effective 1080x1920)"
 echo "Timezone:     ${TIMEZONE:-unknown}"
 echo "Power Mgmt:   Display sleep disabled, system sleep disabled"
 echo "Suspend:      Automatic suspend completely disabled"
-echo "Cursor:       Hidden for kiosk mode"
-echo "Auto-start:   kiosk.desktop, display-rotation, disable-screensaver, hide-cursor, prevent-suspend"
+echo "Cursor:       Hidden using multiple methods (unclutter, transparent cursor, CSS, mouse disable)"
+echo "Auto-start:   kiosk.desktop, display-rotation, disable-screensaver, hide-cursor, disable-mouse, prevent-suspend"
 echo
 echo "Useful:"
 if [ "${DISPLAY_MANAGER}" = "gdm3" ]; then
@@ -1626,6 +1844,7 @@ echo "  sudo -u kiosk chromium --version"
 echo "  sudo -u kiosk /usr/local/bin/kiosk-display-setup"
 echo "  sudo -u kiosk /usr/local/bin/kiosk-disable-screensaver"
 echo "  sudo -u kiosk /usr/local/bin/kiosk-hide-cursor"
+echo "  sudo -u kiosk /usr/local/bin/kiosk-disable-mouse"
 echo "  sudo -u kiosk /usr/local/bin/kiosk-prevent-suspend"
 echo "  xrandr --query"
 echo "  timedatectl status"
