@@ -675,11 +675,18 @@ systemctl mask power-profiles-daemon.service 2>/dev/null || true
 echo "Configuring power management for kiosk user..."
 
 # Create power management configuration directories and files with proper ownership
-sudo -u kiosk bash -c '
-mkdir -p /home/kiosk/.config/xfce4/xfconf/xfce-perchannel-xml
-mkdir -p /home/kiosk/.config/gnome-power-manager
+sudo -u kiosk mkdir -p /home/kiosk/.config/xfce4/xfconf/xfce-perchannel-xml
+sudo -u kiosk mkdir -p /home/kiosk/.config/gnome-power-manager
 
-cat > /home/kiosk/.config/xfce4/xfconf/xfce-perchannel-xml/xfce4-power-manager.xml << EOF
+# Create autostart directory early to ensure it exists for all autostart files
+sudo -u kiosk mkdir -p /home/kiosk/.config/autostart
+
+# Ensure directories have correct ownership and permissions
+chown -R kiosk:kiosk /home/kiosk/.config
+chmod -R 755 /home/kiosk/.config
+
+# Create XFCE power management configuration
+cat > /tmp/xfce4-power-manager.xml << 'EOF'
 <?xml version="1.0" encoding="UTF-8"?>
 <channel name="xfce4-power-manager" version="1.0">
   <property name="xfce4-power-manager" type="empty">
@@ -702,11 +709,16 @@ cat > /home/kiosk/.config/xfce4/xfconf/xfce-perchannel-xml/xfce4-power-manager.x
 </channel>
 EOF
 
-# Configure GNOME power management as fallback
-cat > /home/kiosk/.config/gnome-power-manager/gnome-power-manager.xml << EOF
+# Copy XFCE config with correct ownership
+sudo -u kiosk cp /tmp/xfce4-power-manager.xml /home/kiosk/.config/xfce4/xfconf/xfce-perchannel-xml/
+rm /tmp/xfce4-power-manager.xml
+
+# Create GNOME power management configuration
+cat > /tmp/gnome-power-manager.xml << 'EOF'
 <?xml version="1.0" encoding="UTF-8"?>
 <channel name="gnome-power-manager" version="1.0">
   <property name="gnome-power-manager" type="empty">
+    <property name="dpms-on-ac-sleep" type="uint" value="0"/>
     <property name="sleep-computer-ac" type="uint" value="0"/>
     <property name="sleep-computer-battery" type="uint" value="0"/>
     <property name="sleep-display-ac" type="uint" value="0"/>
@@ -719,13 +731,20 @@ cat > /home/kiosk/.config/gnome-power-manager/gnome-power-manager.xml << EOF
   </property>
 </channel>
 EOF
-'
+
+# Copy GNOME config with correct ownership
+sudo -u kiosk cp /tmp/gnome-power-manager.xml /home/kiosk/.config/gnome-power-manager/
+rm /tmp/gnome-power-manager.xml
 
 # Configure GNOME settings to disable automatic suspend notifications
-# Create directory and file with proper ownership from the start
-sudo -u kiosk bash -c '
-mkdir -p /home/kiosk/.config/dconf
-cat > /home/kiosk/.config/dconf/user << EOF
+sudo -u kiosk mkdir -p /home/kiosk/.config/dconf
+
+# Ensure dconf directory has correct ownership and permissions
+chown -R kiosk:kiosk /home/kiosk/.config/dconf
+chmod -R 755 /home/kiosk/.config/dconf
+
+# Create dconf user configuration
+cat > /tmp/dconf-user << 'EOF'
 [org/gnome/settings-daemon/plugins/power]
 sleep-inactive-ac-timeout=0
 sleep-inactive-battery-timeout=0
@@ -735,9 +754,12 @@ idle-dim=false
 idle-brightness=100
 critical-battery-action=shutdown
 EOF
-'
 
-# Set proper ownership
+# Copy dconf config with correct ownership
+sudo -u kiosk cp /tmp/dconf-user /home/kiosk/.config/dconf/user
+rm /tmp/dconf-user
+
+# Ownership already set above, but ensure it's still correct
 chown -R kiosk:kiosk /home/kiosk/.config
 
 # Configure system-wide power management
@@ -1030,8 +1052,7 @@ echo "✓ System sleep and hibernation disabled"
 echo "✓ Automatic suspend notifications disabled"
 echo "✓ Cursor hiding configured"
 
-# Create autostart directory for kiosk user
-sudo -u kiosk mkdir -p /home/kiosk/.config/autostart
+# Autostart directory already created above
 
 # Create autostart entry for display rotation
 cat > /home/kiosk/.config/autostart/display-rotation.desktop << 'EOF'
