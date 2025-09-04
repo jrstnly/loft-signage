@@ -529,79 +529,110 @@ chmod +x /usr/local/bin/kiosk-display-setup
 # ==============================
 # 9) Configure display manager for auto-login and kiosk mode
 # ==============================
-echo "Configuring ${DISPLAY_MANAGER:-display manager} for auto-login and kiosk mode..."
+echo "Configuring display manager for auto-login and kiosk mode..."
+
+# First, let's ensure we have a clean state by stopping all display managers
+echo "Stopping all display managers to ensure clean configuration..."
+systemctl stop lightdm.service 2>/dev/null || true
+systemctl stop gdm3.service 2>/dev/null || true
+systemctl stop gdm.service 2>/dev/null || true
+
+# Wait a moment for services to fully stop
+sleep 2
+
+# Detect which display manager is actually available and working
+echo "Detecting available display managers..."
+
+# Check for lightdm first (preferred for ARM systems)
+if command -v lightdm >/dev/null 2>&1 && [ -f /etc/init.d/lightdm ]; then
+  DISPLAY_MANAGER="lightdm"
+  echo "✓ lightdm detected and available (primary choice for ARM)"
+elif command -v gdm3 >/dev/null 2>&1 && [ -f /etc/init.d/gdm3 ]; then
+  DISPLAY_MANAGER="gdm3"
+  echo "✓ gdm3 detected and available (fallback option)"
+elif command -v gdm >/dev/null 2>&1 && [ -f /etc/init.d/gdm ]; then
+  DISPLAY_MANAGER="gdm"
+  echo "✓ gdm detected and available (legacy option)"
+else
+  echo "⚠ No display managers found, installing lightdm..."
+  apt-get install -y lightdm lightdm-gtk-greeter
+  DISPLAY_MANAGER="lightdm"
+fi
+
+echo "Selected display manager: ${DISPLAY_MANAGER}"
+
+# Ensure the kiosk user has a valid shell and home directory
+echo "Configuring kiosk user for auto-login..."
+chsh -s /bin/bash kiosk 2>/dev/null || true
+
+# Remove password from kiosk user for true auto-login
+echo "Removing password from kiosk user for auto-login..."
+passwd -d kiosk 2>/dev/null || true
+
+# Also ensure the user can log in without password
+usermod -p '' kiosk 2>/dev/null || true
+
+# Set default target to graphical (this enables the display manager)
+echo "Setting default target to graphical..."
+systemctl set-default graphical.target
 
 # Configure display manager based on what's available
 if [ "${DISPLAY_MANAGER}" = "lightdm" ]; then
-  echo "Configuring lightdm (primary choice for ARM)..."
+  echo "Configuring lightdm for auto-login..."
   
-  # Disable gdm3 if it exists to avoid conflicts
-  systemctl stop gdm3 2>/dev/null || true
+  # Disable other display managers to avoid conflicts
   systemctl disable gdm3 2>/dev/null || true
+  systemctl disable gdm 2>/dev/null || true
   
-  # Configure lightdm for auto-login (using the working configuration)
+  # Create a more robust lightdm configuration
   cat > /etc/lightdm/lightdm.conf << 'EOF'
 [SeatDefaults]
 autologin-user=kiosk
 autologin-user-timeout=0
+autologin-session=ubuntu
 user-session=ubuntu
-# Uncomment the following, if running Unity
-#greeter-session=unity-greeter
+greeter-session=lightdm-gtk-greeter
+greeter-hide-users=true
+greeter-show-manual-login=false
+session-cleanup-script=/usr/local/bin/kiosk-session-cleanup
 EOF
+
+  # Create session cleanup script to handle any login issues
+  cat > /usr/local/bin/kiosk-session-cleanup << 'BASH'
+#!/usr/bin/env bash
+# Clean up any existing sessions for the kiosk user
+pkill -u kiosk -f "lightdm" 2>/dev/null || true
+pkill -u kiosk -f "gnome-session" 2>/dev/null || true
+pkill -u kiosk -f "xfce4-session" 2>/dev/null || true
+BASH
+  chmod +x /usr/local/bin/kiosk-session-cleanup
   
-  # Ensure the kiosk user has a valid shell and home directory
-  chsh -s /bin/bash kiosk 2>/dev/null || true
-  
-  # Remove password from kiosk user for true auto-login
-  echo "Removing password from kiosk user for auto-login..."
-  passwd -d kiosk 2>/dev/null || true
-  
-  # Also ensure the user can log in without password
-  usermod -p '' kiosk 2>/dev/null || true
-  
-  # Set default target to graphical (this enables the display manager)
-  systemctl set-default graphical.target
-  
-  # Start lightdm (it's a template unit, so we start it directly)
+  # Ensure lightdm is enabled and start it
+  systemctl enable lightdm.service
   systemctl start lightdm.service
   
-  # Remove any conflicting configuration files
-  rm -f /etc/lightdm/lightdm.conf.d/50-ubuntu.conf
-  rm -f /etc/lightdm/lightdm.conf.d/60-kiosk.conf
-  
-  # If lightdm fails, try to fall back to gdm3
+  # Wait a moment and check if it's running
+  sleep 3
   if ! systemctl is-active --quiet lightdm.service; then
     echo "⚠ lightdm failed to start, trying gdm3 fallback..."
-    systemctl stop lightdm.service 2>/dev/null || true
-    systemctl disable lightdm.service 2>/dev/null || true
-    
-    # Try gdm3 instead
-    apt-get install -y gdm3 || echo "⚠ gdm3 installation failed"
-    if command -v gdm3 >/dev/null 2>&1; then
-      DISPLAY_MANAGER="gdm3"
-      echo "Switching to gdm3 fallback..."
-      # This will be handled by the gdm3 configuration block below
-    fi
+    DISPLAY_MANAGER="gdm3"
+    # This will be handled by the gdm3 configuration block below
+  else
+    echo "✓ lightdm started successfully"
   fi
   
-elif [ "${DISPLAY_MANAGER}" = "gdm3" ]; then
-  echo "Configuring gdm3 (fallback option)..."
+elif [ "${DISPLAY_MANAGER}" = "gdm3" ] || [ "${DISPLAY_MANAGER}" = "gdm" ]; then
+  echo "Configuring ${DISPLAY_MANAGER} for auto-login..."
   
-  # Remove password from kiosk user for true auto-login
-  echo "Removing password from kiosk user for auto-login..."
-  passwd -d kiosk 2>/dev/null || true
+  # Disable lightdm to avoid conflicts
+  systemctl disable lightdm.service 2>/dev/null || true
   
-  # Set the default target to graphical
-  systemctl set-default graphical.target
-  
-  # Start gdm3 manually for immediate use
-  systemctl start gdm3
-  
-  # Configure gdm3 for auto-login
+  # Create a robust gdm3 configuration
   cat > /etc/gdm3/custom.conf << 'EOF'
 [daemon]
 AutomaticLogin=kiosk
 AutomaticLoginEnable=true
+TimedLoginEnable=false
 
 [security]
 AllowRoot=false
@@ -611,13 +642,199 @@ Enable=false
 
 [greeter]
 DisableUserList=true
+DisableRestartButtons=true
 EOF
 
-else
-  echo "⚠ No display manager available, will need manual configuration"
+  # Also create gdm configuration if using legacy gdm
+  if [ "${DISPLAY_MANAGER}" = "gdm" ]; then
+    cat > /etc/gdm/custom.conf << 'EOF'
+[daemon]
+AutomaticLogin=kiosk
+AutomaticLoginEnable=true
+TimedLoginEnable=false
+
+[security]
+AllowRoot=false
+
+[xdmcp]
+Enable=false
+
+[greeter]
+DisableUserList=true
+DisableRestartButtons=true
+EOF
+  fi
+  
+  # Enable and start the display manager
+  systemctl enable "${DISPLAY_MANAGER}.service"
+  systemctl start "${DISPLAY_MANAGER}.service"
+  
+  echo "✓ ${DISPLAY_MANAGER} configured and started"
 fi
 
-# Display manager configuration is handled above
+# If we still don't have a working display manager, try one more fallback
+if ! systemctl is-active --quiet "${DISPLAY_MANAGER}.service" 2>/dev/null; then
+  echo "⚠ ${DISPLAY_MANAGER} is not running, trying emergency fallback..."
+  
+  # Try to install and configure lightdm as emergency fallback
+  apt-get install -y lightdm lightdm-gtk-greeter || echo "⚠ lightdm installation failed"
+  
+  if command -v lightdm >/dev/null 2>&1; then
+    echo "Configuring lightdm as emergency fallback..."
+    DISPLAY_MANAGER="lightdm"
+    
+    # Create minimal lightdm configuration
+    cat > /etc/lightdm/lightdm.conf << 'EOF'
+[SeatDefaults]
+autologin-user=kiosk
+autologin-user-timeout=0
+user-session=ubuntu
+EOF
+    
+    systemctl enable lightdm.service
+    systemctl start lightdm.service
+    
+    if systemctl is-active --quiet lightdm.service; then
+      echo "✓ lightdm emergency fallback successful"
+    else
+      echo "⚠ All display manager attempts failed"
+    fi
+  fi
+fi
+
+# Verify the display manager is running
+echo "Verifying display manager status..."
+if systemctl is-active --quiet "${DISPLAY_MANAGER}.service" 2>/dev/null; then
+  echo "✓ ${DISPLAY_MANAGER} is running and configured for auto-login"
+else
+  echo "⚠ ${DISPLAY_MANAGER} is not running - auto-login may not work"
+  echo "You may need to manually start the display manager after reboot"
+fi
+
+# Create a test script to verify auto-login configuration
+cat > /usr/local/bin/test-autologin << 'BASH'
+#!/usr/bin/env bash
+echo "Testing auto-login configuration..."
+echo "Display manager: $(systemctl list-units --type=service --state=running | grep -E "(lightdm|gdm)" | awk '{print $1}' || echo 'none running')"
+echo "Kiosk user shell: $(getent passwd kiosk | cut -d: -f7)"
+echo "Kiosk user password: $(getent passwd kiosk | cut -d: -f2)"
+echo "Graphical target: $(systemctl get-default)"
+echo "Display manager enabled: $(systemctl is-enabled lightdm.service 2>/dev/null || systemctl is-enabled gdm3.service 2>/dev/null || systemctl is-enabled gdm.service 2>/dev/null || echo 'none')"
+BASH
+chmod +x /usr/local/bin/test-autologin
+
+echo "✓ Auto-login configuration completed"
+echo "✓ Test with: /usr/local/bin/test-autologin"
+
+# ==============================
+# 9.1) Configure desktop session for kiosk user
+# ==============================
+echo "Configuring desktop session for kiosk user..."
+
+# Detect available desktop sessions
+echo "Detecting available desktop sessions..."
+
+# Check for common desktop environments
+AVAILABLE_SESSIONS=()
+if [ -f /usr/share/xsessions/ubuntu.desktop ]; then
+  AVAILABLE_SESSIONS+=("ubuntu")
+fi
+if [ -f /usr/share/xsessions/gnome.desktop ]; then
+  AVAILABLE_SESSIONS+=("gnome")
+fi
+if [ -f /usr/share/xsessions/gnome-xorg.desktop ]; then
+  AVAILABLE_SESSIONS+=("gnome-xorg")
+fi
+if [ -f /usr/share/xsessions/xfce.desktop ]; then
+  AVAILABLE_SESSIONS+=("xfce")
+fi
+if [ -f /usr/share/xsessions/lxde.desktop ]; then
+  AVAILABLE_SESSIONS+=("lxde")
+fi
+
+echo "Available sessions: ${AVAILABLE_SESSIONS[*]}"
+
+# Determine the best session to use
+PREFERRED_SESSION=""
+if [[ " ${AVAILABLE_SESSIONS[*]} " =~ " ubuntu " ]]; then
+  PREFERRED_SESSION="ubuntu"
+elif [[ " ${AVAILABLE_SESSIONS[*]} " =~ " gnome " ]]; then
+  PREFERRED_SESSION="gnome"
+elif [[ " ${AVAILABLE_SESSIONS[*]} " =~ " xfce " ]]; then
+  PREFERRED_SESSION="xfce"
+elif [[ " ${AVAILABLE_SESSIONS[*]} " =~ " lxde " ]]; then
+  PREFERRED_SESSION="lxde"
+else
+  # If no sessions found, try to install a basic one
+  echo "No desktop sessions found, installing basic desktop environment..."
+  apt-get install -y ubuntu-desktop-minimal || apt-get install -y gnome-core || echo "⚠ Failed to install desktop environment"
+  
+  # Check again after installation
+  if [ -f /usr/share/xsessions/ubuntu.desktop ]; then
+    PREFERRED_SESSION="ubuntu"
+  elif [ -f /usr/share/xsessions/gnome.desktop ]; then
+    PREFERRED_SESSION="gnome"
+  fi
+fi
+
+if [ -n "${PREFERRED_SESSION}" ]; then
+  echo "Selected session: ${PREFERRED_SESSION}"
+  
+  # Update the display manager configuration with the correct session
+  if [ "${DISPLAY_MANAGER}" = "lightdm" ]; then
+    echo "Updating lightdm configuration with session: ${PREFERRED_SESSION}"
+    
+    # Update the lightdm configuration with the detected session
+    sed -i "s/user-session=.*/user-session=${PREFERRED_SESSION}/" /etc/lightdm/lightdm.conf
+    sed -i "s/autologin-session=.*/autologin-session=${PREFERRED_SESSION}/" /etc/lightdm/lightdm.conf
+    
+    # Also update the autostart kiosk.desktop to use the correct session
+    sed -i "s/Exec=chromium/Exec=env DESKTOP_SESSION=${PREFERRED_SESSION} chromium/" /home/kiosk/.config/autostart/kiosk.desktop 2>/dev/null || true
+    
+  elif [ "${DISPLAY_MANAGER}" = "gdm3" ] || [ "${DISPLAY_MANAGER}" = "gdm" ]; then
+    echo "Updating ${DISPLAY_MANAGER} configuration with session: ${PREFERRED_SESSION}"
+    
+    # For gdm3/gdm, we need to ensure the session is available
+    # The session should be automatically detected, but we can verify
+    if [ ! -f "/usr/share/xsessions/${PREFERRED_SESSION}.desktop" ]; then
+      echo "⚠ Warning: Selected session ${PREFERRED_SESSION} not found in /usr/share/xsessions/"
+      echo "This may cause auto-login to fail"
+    fi
+  fi
+  
+  # Create a session verification script
+  cat > /usr/local/bin/verify-session << 'BASH'
+#!/usr/bin/env bash
+echo "Verifying desktop session configuration..."
+echo "Available sessions:"
+ls -la /usr/share/xsessions/ 2>/dev/null | grep "\.desktop$" || echo "No sessions found"
+
+echo ""
+echo "Current display manager: $(systemctl list-units --type=service --state=running | grep -E "(lightdm|gdm)" | awk '{print $1}' || echo 'none running')"
+
+if [ -f /etc/lightdm/lightdm.conf ]; then
+  echo ""
+  echo "LightDM configuration:"
+  grep -E "(user-session|autologin-session)" /etc/lightdm/lightdm.conf || echo "No session configuration found"
+fi
+
+if [ -f /etc/gdm3/custom.conf ]; then
+  echo ""
+  echo "GDM3 configuration:"
+  grep -E "(AutomaticLogin|AutomaticLoginEnable)" /etc/gdm3/custom.conf || echo "No auto-login configuration found"
+fi
+
+echo ""
+echo "Kiosk user session files:"
+ls -la /home/kiosk/.config/autostart/ 2>/dev/null || echo "No autostart directory found"
+BASH
+  chmod +x /usr/local/bin/verify-session
+  
+  echo "✓ Session configuration completed"
+  echo "✓ Verify with: /usr/local/bin/verify-session"
+else
+  echo "⚠ No suitable desktop session found - auto-login may not work properly"
+fi
 
 # ==============================
 # 9.5) Configure timezone and locale
@@ -1052,6 +1269,184 @@ echo "✓ System sleep and hibernation disabled"
 echo "✓ Automatic suspend notifications disabled"
 echo "✓ Cursor hiding configured"
 
+# ==============================
+# 9.7) Create troubleshooting and diagnostic tools
+# ==============================
+echo "Creating troubleshooting and diagnostic tools..."
+
+# Create a comprehensive diagnostic script
+cat > /usr/local/bin/kiosk-diagnostics << 'BASH'
+#!/usr/bin/env bash
+echo "=============================================="
+echo "KIOSK DIAGNOSTICS REPORT"
+echo "=============================================="
+echo "Date: $(date)"
+echo "Hostname: $(hostname)"
+echo ""
+
+echo "1. SYSTEM STATUS"
+echo "================="
+echo "Uptime: $(uptime)"
+echo "Load: $(cat /proc/loadavg 2>/dev/null || echo 'N/A')"
+echo "Memory: $(free -h 2>/dev/null | grep '^Mem:' || echo 'N/A')"
+echo "Disk: $(df -h / 2>/dev/null | tail -1 || echo 'N/A')"
+echo ""
+
+echo "2. DISPLAY MANAGER STATUS"
+echo "========================="
+echo "Default target: $(systemctl get-default)"
+echo "Graphical target status: $(systemctl is-active graphical.target)"
+echo ""
+
+# Check all display managers
+for dm in lightdm gdm3 gdm; do
+  if systemctl list-unit-files | grep -q "^${dm}"; then
+    echo "${dm}:"
+    echo "  Enabled: $(systemctl is-enabled ${dm}.service 2>/dev/null || echo 'N/A')"
+    echo "  Active: $(systemctl is-active ${dm}.service 2>/dev/null || echo 'N/A')"
+    echo "  Status: $(systemctl status ${dm}.service --no-pager -l 2>/dev/null | head -5 | tail -1 || echo 'N/A')"
+  fi
+done
+echo ""
+
+echo "3. AUTO-LOGIN CONFIGURATION"
+echo "============================"
+echo "Kiosk user exists: $(id kiosk 2>/dev/null && echo 'Yes' || echo 'No')"
+if id kiosk >/dev/null 2>&1; then
+  echo "Kiosk user shell: $(getent passwd kiosk | cut -d: -f7)"
+  echo "Kiosk user password: $(getent passwd kiosk | cut -d: -f2)"
+  echo "Kiosk user groups: $(groups kiosk 2>/dev/null || echo 'N/A')"
+fi
+echo ""
+
+echo "4. DISPLAY MANAGER CONFIGURATION"
+echo "================================="
+if [ -f /etc/lightdm/lightdm.conf ]; then
+  echo "LightDM config (/etc/lightdm/lightdm.conf):"
+  grep -E "(autologin|user-session)" /etc/lightdm/lightdm.conf || echo "  No auto-login config found"
+fi
+
+if [ -f /etc/gdm3/custom.conf ]; then
+  echo "GDM3 config (/etc/gdm3/custom.conf):"
+  grep -E "(AutomaticLogin|AutomaticLoginEnable)" /etc/gdm3/custom.conf || echo "  No auto-login config found"
+fi
+
+if [ -f /etc/gdm/custom.conf ]; then
+  echo "GDM config (/etc/gdm/custom.conf):"
+  grep -E "(AutomaticLogin|AutomaticLoginEnable)" /etc/gdm/custom.conf || echo "  No auto-login config found"
+fi
+echo ""
+
+echo "5. DESKTOP SESSIONS"
+echo "===================="
+echo "Available sessions:"
+ls -la /usr/share/xsessions/ 2>/dev/null | grep "\.desktop$" || echo "  No sessions found"
+echo ""
+
+echo "6. AUTOSTART CONFIGURATION"
+echo "==========================="
+if [ -d /home/kiosk/.config/autostart ]; then
+  echo "Kiosk autostart files:"
+  ls -la /home/kiosk/.config/autostart/ || echo "  No autostart directory"
+else
+  echo "Kiosk autostart directory: Not found"
+fi
+echo ""
+
+echo "7. X11 STATUS"
+echo "=============="
+echo "X11 processes:"
+ps aux | grep -E "(X|lightdm|gdm)" | grep -v grep || echo "  No X11 processes found"
+echo ""
+
+echo "8. NETWORK STATUS"
+echo "=================="
+echo "Nginx status: $(systemctl is-active nginx 2>/dev/null || echo 'N/A')"
+echo "Nginx port 9000: $(netstat -tlnp 2>/dev/null | grep :9000 || echo 'Not listening')"
+echo ""
+
+echo "9. RECENT LOGS"
+echo "==============="
+echo "System journal (last 20 lines):"
+journalctl -n 20 --no-pager 2>/dev/null | tail -20 || echo "  Cannot read system journal"
+echo ""
+
+echo "10. TROUBLESHOOTING COMMANDS"
+echo "============================="
+echo "To restart display manager:"
+echo "  sudo systemctl restart lightdm.service  # or gdm3.service"
+echo ""
+echo "To check specific service:"
+echo "  sudo systemctl status lightdm.service"
+echo "  sudo journalctl -u lightdm.service -f"
+echo ""
+echo "To test auto-login manually:"
+echo "  sudo systemctl start lightdm.service"
+echo "  # Then check if kiosk user auto-logs in"
+echo ""
+echo "To verify configuration:"
+echo "  /usr/local/bin/test-autologin"
+echo "  /usr/local/bin/verify-session"
+echo "=============================================="
+BASH
+chmod +x /usr/local/bin/kiosk-diagnostics
+
+# Create a quick fix script for common auto-login issues
+cat > /usr/local/bin/fix-autologin << 'BASH'
+#!/usr/bin/env bash
+echo "Attempting to fix auto-login issues..."
+
+# Stop all display managers
+echo "Stopping all display managers..."
+systemctl stop lightdm.service 2>/dev/null || true
+systemctl stop gdm3.service 2>/dev/null || true
+systemctl stop gdm.service 2>/dev/null || true
+
+sleep 2
+
+# Ensure kiosk user has no password
+echo "Removing kiosk user password..."
+passwd -d kiosk 2>/dev/null || true
+usermod -p '' kiosk 2>/dev/null || true
+
+# Set graphical target
+echo "Setting graphical target..."
+systemctl set-default graphical.target
+
+# Try to start lightdm first
+echo "Starting lightdm..."
+systemctl enable lightdm.service
+systemctl start lightdm.service
+
+sleep 3
+
+if systemctl is-active --quiet lightdm.service; then
+  echo "✓ lightdm started successfully"
+else
+  echo "lightdm failed, trying gdm3..."
+  systemctl stop lightdm.service 2>/dev/null || true
+  systemctl disable lightdm.service 2>/dev/null || true
+  
+  systemctl enable gdm3.service
+  systemctl start gdm3.service
+  
+  if systemctl is-active --quiet gdm3.service; then
+    echo "✓ gdm3 started successfully"
+  else
+    echo "⚠ Both display managers failed to start"
+    echo "Check system logs: journalctl -xe"
+  fi
+fi
+
+echo "Auto-login fix attempt completed"
+echo "Reboot to test: sudo reboot"
+BASH
+chmod +x /usr/local/bin/fix-autologin
+
+echo "✓ Diagnostic tools created"
+echo "✓ Run diagnostics: /usr/local/bin/kiosk-diagnostics"
+echo "✓ Fix auto-login: /usr/local/bin/fix-autologin"
+
 # Autostart directory already created above
 
 # Create autostart entry for display rotation
@@ -1077,6 +1472,119 @@ EOF
 # Set proper ownership
 chown kiosk:kiosk /home/kiosk/.config/autostart/display-rotation.desktop
 chown kiosk:kiosk /home/kiosk/.config/autostart/kiosk.desktop
+
+echo "✓ Auto-login configuration completed"
+echo "✓ Test with: /usr/local/bin/test-autologin"
+
+# ==============================
+# 9.1) Configure desktop session for kiosk user
+# ==============================
+echo "Configuring desktop session for kiosk user..."
+
+# Detect available desktop sessions
+echo "Detecting available desktop sessions..."
+
+# Check for common desktop environments
+AVAILABLE_SESSIONS=()
+if [ -f /usr/share/xsessions/ubuntu.desktop ]; then
+  AVAILABLE_SESSIONS+=("ubuntu")
+fi
+if [ -f /usr/share/xsessions/gnome.desktop ]; then
+  AVAILABLE_SESSIONS+=("gnome")
+fi
+if [ -f /usr/share/xsessions/gnome-xorg.desktop ]; then
+  AVAILABLE_SESSIONS+=("gnome-xorg")
+fi
+if [ -f /usr/share/xsessions/xfce.desktop ]; then
+  AVAILABLE_SESSIONS+=("xfce")
+fi
+if [ -f /usr/share/xsessions/lxde.desktop ]; then
+  AVAILABLE_SESSIONS+=("lxde")
+fi
+
+echo "Available sessions: ${AVAILABLE_SESSIONS[*]}"
+
+# Determine the best session to use
+PREFERRED_SESSION=""
+if [[ " ${AVAILABLE_SESSIONS[*]} " =~ " ubuntu " ]]; then
+  PREFERRED_SESSION="ubuntu"
+elif [[ " ${AVAILABLE_SESSIONS[*]} " =~ " gnome " ]]; then
+  PREFERRED_SESSION="gnome"
+elif [[ " ${AVAILABLE_SESSIONS[*]} " =~ " xfce " ]]; then
+  PREFERRED_SESSION="xfce"
+elif [[ " ${AVAILABLE_SESSIONS[*]} " =~ " lxde " ]]; then
+  PREFERRED_SESSION="lxde"
+else
+  # If no sessions found, try to install a basic one
+  echo "No desktop sessions found, installing basic desktop environment..."
+  apt-get install -y ubuntu-desktop-minimal || apt-get install -y gnome-core || echo "⚠ Failed to install desktop environment"
+  
+  # Check again after installation
+  if [ -f /usr/share/xsessions/ubuntu.desktop ]; then
+    PREFERRED_SESSION="ubuntu"
+  elif [ -f /usr/share/xsessions/gnome.desktop ]; then
+    PREFERRED_SESSION="gnome"
+  fi
+fi
+
+if [ -n "${PREFERRED_SESSION}" ]; then
+  echo "Selected session: ${PREFERRED_SESSION}"
+  
+  # Update the display manager configuration with the correct session
+  if [ "${DISPLAY_MANAGER}" = "lightdm" ]; then
+    echo "Updating lightdm configuration with session: ${PREFERRED_SESSION}"
+    
+    # Update the lightdm configuration with the detected session
+    sed -i "s/user-session=.*/user-session=${PREFERRED_SESSION}/" /etc/lightdm/lightdm.conf
+    sed -i "s/autologin-session=.*/autologin-session=${PREFERRED_SESSION}/" /etc/lightdm/lightdm.conf
+    
+    # Also update the autostart kiosk.desktop to use the correct session
+    sed -i "s/Exec=chromium/Exec=env DESKTOP_SESSION=${PREFERRED_SESSION} chromium/" /home/kiosk/.config/autostart/kiosk.desktop 2>/dev/null || true
+    
+  elif [ "${DISPLAY_MANAGER}" = "gdm3" ] || [ "${DISPLAY_MANAGER}" = "gdm" ]; then
+    echo "Updating ${DISPLAY_MANAGER} configuration with session: ${PREFERRED_SESSION}"
+    
+    # For gdm3/gdm, we need to ensure the session is available
+    # The session should be automatically detected, but we can verify
+    if [ ! -f "/usr/share/xsessions/${PREFERRED_SESSION}.desktop" ]; then
+      echo "⚠ Warning: Selected session ${PREFERRED_SESSION} not found in /usr/share/xsessions/"
+      echo "This may cause auto-login to fail"
+    fi
+  fi
+  
+  # Create a session verification script
+  cat > /usr/local/bin/verify-session << 'BASH'
+#!/usr/bin/env bash
+echo "Verifying desktop session configuration..."
+echo "Available sessions:"
+ls -la /usr/share/xsessions/ 2>/dev/null | grep "\.desktop$" || echo "No sessions found"
+
+echo ""
+echo "Current display manager: $(systemctl list-units --type=service --state=running | grep -E "(lightdm|gdm)" | awk '{print $1}' || echo 'none running')"
+
+if [ -f /etc/lightdm/lightdm.conf ]; then
+  echo ""
+  echo "LightDM configuration:"
+  grep -E "(user-session|autologin-session)" /etc/lightdm/lightdm.conf || echo "No session configuration found"
+fi
+
+if [ -f /etc/gdm3/custom.conf ]; then
+  echo ""
+  echo "GDM3 configuration:"
+  grep -E "(AutomaticLogin|AutomaticLoginEnable)" /etc/gdm3/custom.conf || echo "No auto-login configuration found"
+fi
+
+echo ""
+echo "Kiosk user session files:"
+ls -la /home/kiosk/.config/autostart/ 2>/dev/null || echo "No autostart directory found"
+BASH
+  chmod +x /usr/local/bin/verify-session
+  
+  echo "✓ Session configuration completed"
+  echo "✓ Verify with: /usr/local/bin/verify-session"
+else
+  echo "⚠ No suitable desktop session found - auto-login may not work properly"
+fi
 
 # ==============================
 # 10) Final notes
@@ -1124,6 +1632,12 @@ echo "  timedatectl status"
 echo "  date"
 echo "  systemctl status systemd-suspend.service"
 echo "  systemctl status systemd-hibernate.service"
+echo ""
+echo "Troubleshooting:"
+echo "  /usr/local/bin/kiosk-diagnostics    # Comprehensive system check"
+echo "  /usr/local/bin/fix-autologin        # Attempt to fix auto-login issues"
+echo "  /usr/local/bin/test-autologin       # Test auto-login configuration"
+echo "  /usr/local/bin/verify-session       # Verify desktop session setup"
 echo
 echo "Boot now with:  sudo reboot   (${DISPLAY_MANAGER:-display manager} will auto-start)"
 echo "=============================================="
