@@ -722,18 +722,8 @@ EOF
 
 # Configure GNOME settings to disable automatic suspend notifications
 sudo -u kiosk mkdir -p /home/kiosk/.config/dconf
-cat > /home/kiosk/.config/dconf/user << 'EOF'
-[org/gnome/settings-daemon/plugins/power]
-sleep-inactive-ac-timeout=0
-sleep-inactive-battery-timeout=0
-sleep-inactive-ac-type='suspend'
-sleep-inactive-battery-type='suspend'
-idle-dim=false
-idle-brightness=100
-critical-battery-action='shutdown'
-EOF
 
-# Also configure dconf settings for the kiosk user
+# Configure dconf settings for the kiosk user with proper ownership
 sudo -u kiosk bash -c 'cat > /home/kiosk/.config/dconf/user << EOF
 [org/gnome/settings-daemon/plugins/power]
 sleep-inactive-ac-timeout=0
