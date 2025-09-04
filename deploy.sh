@@ -674,11 +674,12 @@ systemctl mask power-profiles-daemon.service 2>/dev/null || true
 # Configure power management for the kiosk user
 echo "Configuring power management for kiosk user..."
 
-# Create power management configuration directory
-sudo -u kiosk mkdir -p /home/kiosk/.config/xfce4/xfconf/xfce-perchannel-xml
+# Create power management configuration directories and files with proper ownership
+sudo -u kiosk bash -c '
+mkdir -p /home/kiosk/.config/xfce4/xfconf/xfce-perchannel-xml
+mkdir -p /home/kiosk/.config/gnome-power-manager
 
-# Configure XFCE power management to never sleep
-cat > /home/kiosk/.config/xfce4/xfconf/xfce-perchannel-xml/xfce4-power-manager.xml << 'EOF'
+cat > /home/kiosk/.config/xfce4/xfconf/xfce-perchannel-xml/xfce4-power-manager.xml << EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <channel name="xfce4-power-manager" version="1.0">
   <property name="xfce4-power-manager" type="empty">
@@ -702,8 +703,7 @@ cat > /home/kiosk/.config/xfce4/xfconf/xfce-perchannel-xml/xfce4-power-manager.x
 EOF
 
 # Configure GNOME power management as fallback
-sudo -u kiosk mkdir -p /home/kiosk/.config/gnome-power-manager
-cat > /home/kiosk/.config/gnome-power-manager/gnome-power-manager.xml << 'EOF'
+cat > /home/kiosk/.config/gnome-power-manager/gnome-power-manager.xml << EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <channel name="gnome-power-manager" version="1.0">
   <property name="gnome-power-manager" type="empty">
@@ -719,12 +719,13 @@ cat > /home/kiosk/.config/gnome-power-manager/gnome-power-manager.xml << 'EOF'
   </property>
 </channel>
 EOF
+'
 
 # Configure GNOME settings to disable automatic suspend notifications
-sudo -u kiosk mkdir -p /home/kiosk/.config/dconf
-
-# Configure dconf settings for the kiosk user with proper ownership
-sudo -u kiosk bash -c 'cat > /home/kiosk/.config/dconf/user << EOF
+# Create directory and file with proper ownership from the start
+sudo -u kiosk bash -c '
+mkdir -p /home/kiosk/.config/dconf
+cat > /home/kiosk/.config/dconf/user << EOF
 [org/gnome/settings-daemon/plugins/power]
 sleep-inactive-ac-timeout=0
 sleep-inactive-battery-timeout=0
@@ -733,7 +734,8 @@ sleep-inactive-battery-type=suspend
 idle-dim=false
 idle-brightness=100
 critical-battery-action=shutdown
-EOF'
+EOF
+'
 
 # Set proper ownership
 chown -R kiosk:kiosk /home/kiosk/.config
